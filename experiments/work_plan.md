@@ -1,18 +1,43 @@
-# Initial Work Plan
+# Project Work Plan
 
 ## Main Tasks
 
-1. Dataset download and exploration
-2. PyTorch DataLoader implementation
-3. Baseline ResNet18 training
-4. Data augmentation implementation
-5. Limited-data experiments: 20%, 50%, 100%
-6. Evaluation and results analysis
-7. Final report and presentation
+1. Dataset setup and exploration
+2. PyTorch dataset and DataLoader implementation
+3. Transfer-learning pipeline implementation
+4. MobileNetV3-Small, ResNet18, and EfficientNet-B0 training
+5. Limited-data experiments using 20%, 50%, and 100% of the training set
+6. Implementation of three augmentation regimes: none, mild, and strong
+7. Classification evaluation using accuracy, precision, recall, F1-score, and confusion matrices
+8. Grad-CAM generation
+9. Grad-CAM explanation stability analysis using cosine similarity
+10. Experimental result comparison and visualization
+11. Final report and presentation
 
-## Initial Team Responsibilities
+## Team Responsibilities
 
-- Or Bakish: Repository setup, project structure, initial documentation, dataset organization, data exploration, PyTorch DataLoader setup, experiment planning
-- Yotam Gilboa: Baseline training, evaluation metrics, result visualization, analysis of experimental results
+### Or Bakish
 
-Both team members will participate in implementing the experimental pipeline, reviewing results, and preparing the final report and presentation. The division of work may change as the project progresses, according to the final project requirements and the feedback received on the proposal.
+* Repository organization and documentation
+* Dataset organization and data exploration
+* Experiment planning and tracking
+* Maintaining the experiment log
+* Organizing and summarizing experimental results
+* Supporting result visualization and analysis
+* Final report and presentation preparation
+
+### Yotam Gilboa
+
+* PyTorch training pipeline implementation
+* Model implementation and fine-tuning
+* Data augmentation implementation
+* Training and evaluation of experimental configurations
+* Grad-CAM implementation
+* Explanation stability computation
+* Technical analysis of experimental results
+
+## Shared Tasks
+
+Both team members will review the experimental results, discuss conclusions, and participate in preparing the final report and presentation.
+
+The division of work may be adjusted as the project progresses.
