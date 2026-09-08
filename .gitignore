@@ -233,3 +233,7 @@ results/models/
 # OS files
 .DS_Store
 Thumbs.db
+
+# Personal Claude Code preferences (not shared with the team)
+CLAUDE.local.md
+WORKPLAN.local.md
