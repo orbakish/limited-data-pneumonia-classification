@@ -1,5 +1,12 @@
 # Python: local development on 3.12, training on Colab (3.13 as of 2026-09-11).
 # Pinned versions match the Colab Pro environment so local and Colab agree.
+#
+# Install with:  pip install -r requirements.txt
+#
+# Do NOT add --upgrade. `pip install --upgrade -r requirements.txt` force-upgrades every
+# package here, including torch, torchvision and numpy - which replaces the CUDA-matched
+# builds Colab ships and can silently break GPU training. See the note below.
+# (Upgrading pip itself, `python -m pip install --upgrade pip`, is fine and unrelated.)
 
 # --- Analysis & reporting (pinned) ---
 pandas==2.2.3
