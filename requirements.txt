@@ -1,9 +1,22 @@
+# Python: local development on 3.12, training on Colab (3.13 as of 2026-09-11).
+# Pinned versions match the Colab Pro environment so local and Colab agree.
+
+# --- Analysis & reporting (pinned) ---
+pandas==2.2.3
+matplotlib==3.10.0
+scikit-learn==1.6.1
+pillow==11.3.0
+tqdm==4.67.3
+
+# --- Deep learning stack (deliberately NOT pinned) ---
+# Colab ships CUDA-matched builds of these. Pinning a version makes pip replace Colab's
+# build, which can break GPU support. torch is compiled against a specific numpy major
+# version, so numpy must stay unpinned for the same reason.
+# Locally these resolve to CPU builds — fine, since local is development only.
+# Actual versions used for results are recorded per experiment run.
 torch
 torchvision
 numpy
-pandas
-matplotlib
-scikit-learn
-pillow
-tqdm
+
+# --- Local notebook work only (not needed on Colab) ---
 jupyter
