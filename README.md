@@ -70,4 +70,3 @@ Explanation stability will be measured on a fixed class-balanced subset of test 
 
 Healthcare, Computer Vision
 
-## Yotam first edit 
