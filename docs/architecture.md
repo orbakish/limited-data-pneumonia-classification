@@ -40,7 +40,7 @@ flowchart TD
 
     EV["src/evaluate.py<br/>accuracy, precision, recall, F1, confusion matrix"]
     GC["src/gradcam.py<br/>Grad-CAM heatmaps"]
-    ST["src/stability.py<br/>cosine similarity of heatmaps"]
+    ST["src/stability.py<br/>heatmap cosine similarity<br/>in-family + out-of-family"]
 
     CKPT --> EV
     CKPT --> GC
@@ -52,7 +52,7 @@ flowchart TD
     FIG["results/figures/E##_*.png"]
 
     EV --> MET
-    ST -->|"gradcam_stability"| MET
+    ST -->|"two stability scores"| MET
     EV --> FIG
     GC --> FIG
     TR -->|"training curves"| FIG
@@ -72,7 +72,7 @@ flowchart TD
 | Training | `src/train.py` | Architecture-agnostic training loop. Saves checkpoints to Drive in a form Grad-CAM can later hook into. | Planned |
 | Evaluation | `src/evaluate.py` | Classification metrics and confusion matrices, per the schema in `results/README.md`. | Planned |
 | Grad-CAM | `src/gradcam.py` | Forward/backward hooks on the last conv layer; computes the neuron importance weights and the ReLU'd weighted activation map (Selvaraju et al. Eq. 1–2). | Planned |
-| Stability | `src/stability.py` | Cosine similarity between normalized Grad-CAM heatmaps before and after a small input perturbation, averaged over a fixed class-balanced test subset. | Planned |
+| Stability | `src/stability.py` | Cosine similarity between normalized Grad-CAM heatmaps before and after a small input perturbation, averaged over a fixed class-balanced test subset. Measured two ways: **in-family** (a small rotation, with the heatmap rotated back into alignment and out-of-frame corners masked) and **out-of-family** (small Gaussian noise, which no augmentation regime uses). Reporting both keeps the metric from favouring augmented models by construction. | Planned |
 
 ## Design notes
 
