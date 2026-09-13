@@ -50,8 +50,8 @@ The mild regime simulates small realistic variations in chest X-ray acquisition 
 Candidate transformations:
 
 * Random rotation: ±5°
-* Translation: to be fixed from the dataset survey (see NOTES.md question #11)
-* Zoom: to be fixed from the dataset survey (see NOTES.md question #11); zoom-in kept tight
+* Translation: up to 2%
+* Zoom: zoom-out to 0.95, zoom-in up to 1.05
 * Brightness variation: ±10%
 * Contrast variation: ±10%
 
@@ -63,9 +63,9 @@ The strong regime is a stronger conventional augmentation regime: the same allow
 
 Candidate transformations:
 
-* Random rotation: ±20°
-* Translation: to be fixed from the dataset survey (see NOTES.md question #11); larger than mild
-* Zoom: to be fixed from the dataset survey (see NOTES.md question #11); wider zoom-out than mild, zoom-in still tight
+* Random rotation: ±15°
+* Translation: up to 5%
+* Zoom: zoom-out to 0.85, zoom-in up to 1.05 (the same cap as mild, since zooming in is effectively a crop)
 * Brightness variation: ±25%
 * Contrast variation: ±25%
 
@@ -75,14 +75,14 @@ The random resized crop listed in the initial version of this plan has been remo
 
 | Transformation | No augmentation | Mild | Strong |
 |---|---|---|---|
-| Rotation | — | ±5° | ±20° |
-| Translation | — | pending (#11) | pending (#11) |
-| Zoom out | — | pending (#11) | pending (#11), wider than mild |
-| Zoom in | — | pending (#11), tight | pending (#11), tight |
+| Rotation | — | ±5° | ±15° |
+| Translation | — | up to 2% | up to 5% |
+| Zoom out | — | to 0.95 | to 0.85 |
+| Zoom in | — | up to 1.05 | up to 1.05 |
 | Brightness | — | ±10% | ±25% |
 | Contrast | — | ±10% | ±25% |
 
-These are candidate values for initial testing, not final settings.
+These are candidate values for initial testing, not final settings. The translation and zoom limits come from contact sheets of the dataset: in tightly framed images the lung edges sit about 5-10% from the frame and the lung bases sit near the bottom, so translation stays inside a 5% inset. Strong rotation is ±15° rather than more, because rotating a rectangular image swings its corners out of frame, and the costophrenic angles sit in the bottom corners. Before training, a preview of augmented samples should confirm these limits on tightly framed images.
 
 ## Important Experimental Rules
 
@@ -97,4 +97,4 @@ These are candidate values for initial testing, not final settings.
 
 The magnitudes above are candidates for initial testing and may be tuned after the single-configuration pilot run (E01), for example if mild and strong turn out to be barely distinguishable. Any change should be documented here and in NOTES.md, and then kept fixed for all corresponding experiments.
 
-Revised 2026-09-13 to apply the clinical realism constraint (NOTES.md question #12, agreed by Or), remove the random resized crop, and record candidate magnitudes. Translation and zoom limits remain pending the dataset survey.
+Revised 2026-09-13 to apply the clinical realism constraint (NOTES.md question #12, agreed by Or), remove the random resized crop, and record candidate magnitudes. Translation and zoom limits were then set provisionally from the dataset survey contact sheets (NOTES.md question #11), and strong rotation reduced from ±20° to ±15°.
