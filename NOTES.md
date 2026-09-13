@@ -30,6 +30,8 @@ Add to it freely as things come up rather than waiting until the end of a sessio
 | 12 | The augmentation regimes are being redefined so that **no transform changes anatomy, left/right orientation, or visible pathology** (see Decisions). This changes what the experiment compares: the proposal, `README.md` and `experiments/augmentation_plan.md` all describe strong as "stronger generic augmentation", whereas under this rule it becomes stronger *realistic* variation. Do you agree? If so, `augmentation_plan.md` gets rewritten to match and the report framing is adjusted. | Or | Open |
 Or: Strong augmentation should remain a stronger conventional/generic augmentation regime, but all transformations and magnitudes should be constrained to preserve clinical realism and avoid changing anatomy, laterality, or visible pathology.
 | 13 | `results/README.md` defines a single `gradcam_stability` field per experiment, but stability is now measured two ways (see Decisions). Proposed schema change: replace it with `gradcam_stability_in_family` and `gradcam_stability_out_of_family` (the gap can be derived). | Or (results/README.md is hers) | Open |
+| 19 | **Dataset zip for Drive.** Once the dataset is organised, upload it to `pneumonia-project/data/chest_xray.zip` in the shared Drive folder. Three constraints, each of which stays invisible for a long time if missed: **(a)** image filenames must not change — patient keys are parsed out of them (`person<N>_<type>`, `[NORMAL2-]IM-<A>`) and the patient-level split depends on that; **(b)** the official `test/` split stays untouched and is never merged into train or val; **(c)** no `__MACOSX` folder and no nested `chest_xray/chest_xray` inside the zip. The archive should contain `chest_xray/train/...`, not the split folders loose at the top level. | Or | Open |
+| 20 | **`data/dataset_manifest.json`** — a small committed file describing the final dataset, so `notebooks/colab_runner.ipynb` verifies the extracted data against an agreed description instead of counts hardcoded when `survey_dataset.py` happened to run. Fields: `name`, `source`, `prepared_by`, `prepared_on`, `zip_name`, `top_level_folder`, `image_extensions`, and `counts` as `{split: {class: n}}`. Deliberately no total (the notebook sums the parts, so the two cannot contradict each other) and no checksum (a zip already stores a CRC per file, so a corrupt upload fails at extraction). Best written out by whatever script organises the dataset rather than filled in by hand. | Or | Open |
 
 ## Decisions made
 
@@ -54,6 +56,9 @@ Or: Strong augmentation should remain a stronger conventional/generic augmentati
 | **Candidate magnitudes for initial testing:** rotation mild +-5 degrees, strong +-20 degrees; brightness and contrast drafted at mild +-10%, strong +-25%. **Zoom is asymmetric:** zoom-out may go wide, zoom-in stays tight. Translation and zoom-in limits wait for the Phase B survey (question #11). | Strong has to be clearly separated from mild, or a three-level comparison risks a null result that cannot be interpreted. Zooming out only adds border, but zooming in is effectively a crop and can push pathology out of frame. | 2026-09-13 |
 | **Grad-CAM stability is measured two ways.** *In-family:* a small rotation, with the perturbed image's heatmap rotated back into alignment and the out-of-frame corners masked before comparing. *Out-of-family:* small Gaussian noise. Both are reported, along with the gap between them. | Augmentation trains a model to ignore specific changes, so a perturbation from that same family makes augmented models look more stable by construction - the metric would partly measure overlap between training augmentation and test perturbation, and would tilt the result against the proposal's own hypothesis that strong augmentation may reduce stability. Noise is outside every regime and moves no pixels, so it is the fair comparison. The in-family measurement is kept because the gap shows how much apparent stability is trained-in invariance. Rotated heatmaps need re-alignment, or even a perfectly consistent model would score low because the lungs moved. | 2026-09-13 |
 | **Noise and blur are never used as augmentations.** | They are reserved as the out-of-family stability perturbation. Training on them would turn that measurement into another in-family one. | 2026-09-13 |
+| **The Google Drive layout is `MyDrive/pneumonia-project/`**, holding `data/` (the dataset zip), `results/metrics/`, `results/figures/` and `checkpoints/`. The repo is cloned to `/content` and the dataset unzipped to `/content` fresh in every Colab session; nothing is cloned into Drive. | Drive is slow with many small files, so the dataset is stored as one zip and read in a single sequential pass. Only the zip, the results and the checkpoints have to survive a dropped session - the repo and the unpacked images are cheap to recreate. Keeping a git working copy on Drive is slow and prone to corrupting the index. | 2026-09-13 |
+| **Colab installs with plain `pip install -r requirements.txt`, never `--upgrade`**, and `notebooks/colab_runner.ipynb` prints the torch and CUDA versions before and after the install and asserts they are unchanged. | torch, torchvision and numpy are unpinned on purpose, so pip treats them as already satisfied and leaves Colab's CUDA-matched builds alone. A pinned version or `--upgrade` replaces them with generic PyPI wheels and GPU support disappears with no error anywhere. The before/after assertion turns that silent failure into a loud one. | 2026-09-13 |
+| **The repo stays private for the duration of the project**; whether to make it public is revisited after submission. | Consequence for both of us: running the Colab notebook needs a personal access token. It must be a **classic** token with the `repo` scope - fine-grained tokens only reach repositories owned by the account that issued them, and this repo is under Or's account. Store it as a Colab secret named `GITHUB_TOKEN` (the key icon in the Colab sidebar, with notebook access on). A token is never committed and never typed into a notebook cell. | 2026-09-13 |
 
 ## Reference numbers
 
@@ -68,6 +73,16 @@ Measured values worth citing in the report, recorded as they are established.
 | ResNet18 | 11,689,512 |
 
 A 4.6x spread between the smallest and largest model, which gives the lightweight-vs-larger comparison three genuinely distinct size tiers rather than three similar models. Measured with `check_env.py` on 2026-09-11.
+
+### Colab training environment (confirmed 2026-09-13)
+
+| Item | Value |
+|---|---|
+| GPU | Tesla T4 |
+| torch | 2.11.0+cu128 (CUDA 12.8) |
+| `torch.cuda.is_available()` | True |
+
+Confirmed end to end by `notebooks/colab_runner.ipynb` sections 1-8: the torch and CUDA versions were identical before and after `pip install -r requirements.txt`, so the pinned analysis packages installed without disturbing Colab's CUDA-matched deep-learning stack. This is the environment every reported result comes from.
 
 ## Parking lot
 
