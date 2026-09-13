@@ -25,10 +25,11 @@ Add to it freely as things come up rather than waiting until the end of a sessio
 | 5 | Once `docs/architecture.md` (block diagram) exists, should it be linked from `README.md` so it's discoverable? | Or (README is hers) | Open |
 | 6 | Freeze the pretrained conv layers vs. fine-tune them? Kermany et al. found full fine-tuning *hurt* performance on limited medical data due to overfitting. Leaning toward the frozen-backbone recipe as the default. | Yotam, to confirm | Open |
 | 7 | Exact magnitudes for the two stability perturbations: the in-family rotation angle and the out-of-family Gaussian noise level. The families themselves are decided (see Decisions); the values are not. Both must be small enough that the diagnosis would not change. | Yotam | Open, families decided |
-| 10 | Do the NORMAL filenames (`IM-0115-0001.jpeg`, `NORMAL2-IM-...`) encode a patient ID the way the PNEUMONIA ones do (`person53_bacteria_255.jpeg`)? This decides whether patient-level splitting can be applied to both classes or only to PNEUMONIA. If only PNEUMONIA, the limitation goes in the report. | Or (from EDA) | Open |
 | 11 | Translation limits and the zoom-in limit for the mild and strong regimes. Both can push image content off the edge of the frame, so safe values depend on how much margin surrounds the lungs in these images, which gets measured in the Phase B dataset survey. | Yotam | Open, pending Phase B |
 | 12 | The augmentation regimes are being redefined so that **no transform changes anatomy, left/right orientation, or visible pathology** (see Decisions). This changes what the experiment compares: the proposal, `README.md` and `experiments/augmentation_plan.md` all describe strong as "stronger generic augmentation", whereas under this rule it becomes stronger *realistic* variation. Do you agree? If so, `augmentation_plan.md` gets rewritten to match and the report framing is adjusted. | Or | Open |
 | 13 | `results/README.md` defines a single `gradcam_stability` field per experiment, but stability is now measured two ways (see Decisions). Proposed schema change: replace it with `gradcam_stability_in_family` and `gradcam_stability_out_of_family` (the gap can be derived). | Or (results/README.md is hers) | Open |
+| 14 | Yotam is running `survey_dataset.py`, which measures class counts per split, image sizes and aspect ratios, colour modes, filename and patient-ID patterns (evidence for #10), border margins, and a contact sheet of sample images. That overlaps your data exploration. Proposal: your EDA reuses these numbers (they will land under Reference numbers) and focuses on the qualitative side and the report's dataset section. Does that split work, or is there part of it you would rather own? | Or | Open |
+| 15 | **The two classes differ in ways unrelated to pathology** (see Reference numbers, Dataset): PNEUMONIA images are much smaller (median 1160x776 vs 1654x1323 for NORMAL), wider relative to their height (median aspect 1.49 vs 1.23), and all 283 RGB images in the dataset are PNEUMONIA. A model could learn these instead of the lungs, and because the test set comes from the same sources, accuracy alone would not reveal it. Preprocessing removes the colour difference but cannot remove the aspect-ratio difference. How prominent should this be in the report - a limitation paragraph, or also a dedicated Grad-CAM check for heatmaps concentrating on edges and proportions rather than lung fields? | Or + Yotam | Open |
 
 ## Decisions made
 
@@ -53,6 +54,11 @@ Add to it freely as things come up rather than waiting until the end of a sessio
 | **Magnitudes decided so far:** rotation mild +-5 degrees, strong +-20 degrees; brightness and contrast drafted at mild +-10%, strong +-25%. **Zoom is asymmetric:** zoom-out may go wide, zoom-in stays tight. Translation and zoom-in limits wait for the Phase B survey (question #11). | Strong has to be clearly separated from mild, or a three-level comparison risks a null result that cannot be interpreted. Zooming out only adds border, but zooming in is effectively a crop and can push pathology out of frame. | 2026-09-13 |
 | **Grad-CAM stability is measured two ways.** *In-family:* a small rotation, with the perturbed image's heatmap rotated back into alignment and the out-of-frame corners masked before comparing. *Out-of-family:* small Gaussian noise. Both are reported, along with the gap between them. | Augmentation trains a model to ignore specific changes, so a perturbation from that same family makes augmented models look more stable by construction - the metric would partly measure overlap between training augmentation and test perturbation, and would tilt the result against the proposal's own hypothesis that strong augmentation may reduce stability. Noise is outside every regime and moves no pixels, so it is the fair comparison. The in-family measurement is kept because the gap shows how much apparent stability is trained-in invariance. Rotated heatmaps need re-alignment, or even a perfectly consistent model would score low because the lungs moved. | 2026-09-13 |
 | **Noise and blur are never used as augmentations.** | They are reserved as the out-of-family stability perturbation. Training on them would turn that measurement into another in-family one. | 2026-09-13 |
+| **Dataset layout after extraction: keep only `data/raw/chest_xray/{train,val,test}/`.** The Kaggle zip also contains a nested duplicate (`chest_xray/chest_xray/`) and a `__MACOSX/` folder; both are deleted. Code lists image files non-recursively and skips hidden files. | The nested copy is byte-for-byte identical (same counts in every folder, same filenames). `__MACOSX/` holds 5,856 files named like `._IM-0115-0001.jpeg` - they match `*.jpeg` but are 268-byte macOS metadata, not X-rays. A recursive `*.jpeg` search over the extracted zip would find three times the real dataset, a third of it unreadable. Anyone downloading the zip should clean it the same way. | 2026-09-13 |
+| **Every image is converted to grayscale (`L`) and then replicated to 3 channels**, regardless of its stored mode. | The ImageNet-pretrained models need 3 channels. All 283 RGB images are PNEUMONIA, so feeding native RGB could leave small channel differences or compression artefacts that correlate with the label. Routing every image through the same grayscale path erases the mode difference entirely. | 2026-09-13 |
+| **Images are resized by squashing directly to 224x224** (aspect ratio not preserved). | No resize strategy removes the aspect-ratio difference between the classes, since it is in the data; each only changes how it leaks. Padding to square would leave roughly a third of each PNEUMONIA frame as black bars against about a fifth for NORMAL - a trivially learnable shortcut that also wastes resolution. Centre-cropping is excluded because it can remove lung fields. Squashing keeps all anatomy, adds no artificial borders, and leaves the subtlest form of the leak, which is documented (question #15) rather than hidden. | 2026-09-13 |
+| **Patient keys for patient-level splitting:** PNEUMONIA `person<N>_<type>` (number *and* infection type), NORMAL `[NORMAL2-]IM-<A>`. Answers question #10: NORMAL filenames do group images, so patient-level splitting applies to both classes. | NORMAL `<A>` groups multiple images (75 groups of 2-4 images). Bacterial and viral cases are numbered in **separate sequences**, so `person<N>` alone is not a patient ID: 809 person numbers carry both a bacterial and a viral case inside the same split, which one child's image sequence cannot, and the 170 numbers shared between official train and test never once agree on infection type (chance agreement would be about 55%). Keying on the number alone had merged roughly 979 pairs of different children. Caveat: filenames cannot distinguish a patient from a single imaging study for NORMAL; grouping by `<A>` still keeps a study's images together. | 2026-09-13 |
+| **The official `train/` / `test/` split is patient-independent**, so the official test set is used as-is with no patient-exclusion step. | Using the patient keys above, zero patients appear in more than one official split, for either class. This keeps results comparable to Kermany et al. The one blind spot is a child who had both a bacterial and a viral episode, who would carry two different keys - undetectable from filenames. | 2026-09-13 |
 
 ## Reference numbers
 
@@ -67,6 +73,39 @@ Measured values worth citing in the report, recorded as they are established.
 | ResNet18 | 11,689,512 |
 
 A 4.6x spread between the smallest and largest model, which gives the lightweight-vs-larger comparison three genuinely distinct size tiers rather than three similar models. Measured with `check_env.py` on 2026-09-11.
+
+### Dataset (Kaggle Chest X-Ray Images, after cleanup)
+
+Counts per official split:
+
+| Split | NORMAL | PNEUMONIA | Total | Pneumonia : Normal |
+|---|---|---|---|---|
+| train | 1,341 | 3,875 | 5,216 | 2.89 |
+| val | 8 | 8 | 16 | 1.00 |
+| test | 234 | 390 | 624 | 1.67 |
+| **all** | **1,583** | **4,273** | **5,856** | 2.70 |
+
+Image properties per class, all splits combined:
+
+| | NORMAL | PNEUMONIA |
+|---|---|---|
+| Width (min / median / max) | 912 / 1654 / 2916 | 384 / 1160 / 2772 |
+| Height (min / median / max) | 496 / 1323 / 2713 | 127 / 776 / 2304 |
+| Aspect w/h (min / median / max) | 0.88 / 1.23 / 2.11 | 0.84 / 1.49 / 3.38 |
+| Colour modes | L: 1,583 | L: 3,990, RGB: 283 |
+
+The size, aspect-ratio and colour-mode differences between classes are not explained by pathology and are a shortcut-learning risk (question #15). Outliers worth inspecting: a PNEUMONIA image only 127 px tall, and one with aspect ratio 3.38. Measured with `survey_dataset.py` on 2026-09-13.
+
+Patients, from filenames (keys as defined in Decisions):
+
+| | NORMAL | PNEUMONIA |
+|---|---|---|
+| Candidate patients | 1,444 | 2,653 |
+| Patients with 1 image | 1,369 | 2,002 |
+| Largest images-per-patient | 4 | 30 |
+| Patients in more than one official split | 0 | 0 |
+
+PNEUMONIA breakdown: 2,780 bacterial and 1,493 viral images. This matches Kermany et al. exactly (2,538 + 242 bacterial and 1,345 + 148 viral across their training and test sets), confirming this Kaggle copy is complete.
 
 ## Parking lot
 
