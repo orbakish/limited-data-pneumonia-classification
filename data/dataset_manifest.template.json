@@ -1,0 +1,16 @@
+{
+  "_instructions": "Template. Copy to data/dataset_manifest.json, replace every value, and delete this field. notebooks/colab_runner.ipynb reads top_level_folder, image_extensions and counts to verify that the dataset extracted on Colab is the dataset this repo documents - a mismatch stops the notebook. Leave no zeros behind: a count of 0 will be reported as a mismatch.",
+  "name": "chest_xray",
+  "source": "Kaggle - Chest X-Ray Images (Pneumonia), Kermany et al. 2018",
+  "prepared_by": "",
+  "prepared_on": "YYYY-MM-DD",
+  "zip_name": "chest_xray.zip",
+  "top_level_folder": "chest_xray",
+  "image_extensions": [".jpeg", ".jpg", ".png"],
+  "counts": {
+    "train": {"NORMAL": 0, "PNEUMONIA": 0},
+    "val":   {"NORMAL": 0, "PNEUMONIA": 0},
+    "test":  {"NORMAL": 0, "PNEUMONIA": 0}
+  },
+  "notes": ""
+}
