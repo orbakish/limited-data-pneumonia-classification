@@ -47,16 +47,31 @@ it is identical for every experiment.
 
 ### Patient-level splitting
 
-The dataset contains multiple X-rays of the same patient, and the PNEUMONIA filenames encode this
-(for example `person53_bacteria_255.jpeg` and `person53_bacteria_257.jpeg` are the same patient).
+The dataset contains multiple X-rays of the same patient, and both classes encode a patient (or
+study) identifier in the filename.
 
 Images from one patient must not appear in both the training and validation sets. If they do, the
 model can key on patient-specific features such as body size, positioning, or imaging hardware
-rather than on pathology, and validation scores become optimistically biased.
+rather than on pathology, and validation scores become optimistically biased. Whole patients are
+therefore assigned to one side of the split.
 
-Whole patients are therefore assigned to one side of the split. Whether the NORMAL filenames allow
-the same grouping is still being confirmed during data exploration; if they do not, the limitation
-should be recorded in the report.
+Patient keys, as established by `survey_dataset.py`:
+
+| Class | Filename pattern | Patient key |
+|---|---|---|
+| PNEUMONIA | `person<N>_<type>_<M>` (optionally `_<K>`), where type is `bacteria` or `virus` | `person<N>_<type>` |
+| NORMAL | `IM-<A>-<B>` (optionally `-<C>`), sometimes prefixed `NORMAL2-` | `[NORMAL2-]IM-<A>` |
+
+**The infection type must be part of the PNEUMONIA key.** Bacterial and viral cases are numbered in
+separate sequences, so `person53_bacteria_*` and `person53_virus_*` are different children. Keying on
+`person<N>` alone wrongly merges them: 809 person numbers carry both a bacterial and a viral case
+within a single split.
+
+For NORMAL, filenames cannot tell a patient apart from a single imaging study, but grouping by `<A>`
+still keeps all images from the same study together.
+
+Using these keys, no patient appears in more than one of the official `train/`, `val/`, and `test/`
+splits, so the official test set is patient-independent and is used as-is.
 
 ## Experimental Subsets
 
