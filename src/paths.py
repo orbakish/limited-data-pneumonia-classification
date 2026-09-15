@@ -7,7 +7,7 @@ the train/validation boundary and silently inflate every validation score.
 
 Not a script; import it:
 
-    from src.paths import data_root, list_images, patient_key
+    from src.paths import data_root, group_key, list_images, patient_key
 """
 
 import os
@@ -88,3 +88,19 @@ def patient_key(cls, path):
     match = NORMAL_NAME.fullmatch(path.stem)
     # group(1) is None when the optional NORMAL2- prefix is absent; `or ""` turns that into "".
     return f"{match.group(1) or ''}IM-{match.group(2)}" if match else None
+
+def group_key(cls, path):
+    """Return the key that decides which images must stay together when splitting, or None.
+
+    Deliberately coarser than patient_key for PNEUMONIA: it groups by person<N> alone, merging
+    person53_bacteria and person53_virus into one group. The evidence says those are different
+    children, numbered in separate sequences (survey_dataset.py prints the numbers), but
+    merging them can never put one child on both sides of the split whichever reading is
+    right, while keeping them apart would leak if the evidence were wrong. NORMAL groups are
+    the same as patient_key.
+    """
+    if cls == "PNEUMONIA":
+        match = PNEUMONIA_NAME.fullmatch(path.stem)
+        # group(1) alone - the number without the infection type.
+        return f"person{match.group(1)}" if match else None
+    return patient_key(cls, path)
