@@ -1,0 +1,478 @@
+############ EDA ANALYSIS ############
+total rows: 5856
+
+==== 1. INVENTORY (split|class|image_count|non_image|corrupted) ====
+train  NORMAL     images= 1341 non_image=0 corrupted=0 total=1341
+train  PNEUMONIA  images= 3875 non_image=0 corrupted=0 total=3875
+val    NORMAL     images=    8 non_image=0 corrupted=0 total=8
+val    PNEUMONIA  images=    8 non_image=0 corrupted=0 total=8
+test   NORMAL     images=  234 non_image=0 corrupted=0 total=234
+test   PNEUMONIA  images=  390 non_image=0 corrupted=0 total=390
+Extensions present: {'.jpeg': np.int64(5856)}
+
+==== 2. IMAGE MODES / CHANNELS ====
+Overall mode counts: {'L': np.int64(5573), 'RGB': np.int64(283)}
+Overall channels counts: {1: np.int64(5573), 3: np.int64(283)}
+train  NORMAL     modes={'L': np.int64(1341)}
+train  PNEUMONIA  modes={'L': np.int64(3592), 'RGB': np.int64(283)}
+val    NORMAL     modes={'L': np.int64(8)}
+val    PNEUMONIA  modes={'L': np.int64(8)}
+test   NORMAL     modes={'L': np.int64(234)}
+test   PNEUMONIA  modes={'L': np.int64(390)}
+Total RGB images: 283
+RGB by class: {'PNEUMONIA': np.int64(283)}
+RGB by split/class: {('train', 'PNEUMONIA'): np.int64(283)}
+All RGB are PNEUMONIA? True
+Sample RGB filenames: ['person1010_virus_1695.jpeg', 'person1035_bacteria_2969.jpeg', 'person1052_virus_1751.jpeg', 'person1073_bacteria_3008.jpeg', 'person1099_virus_1819.jpeg', 'person1104_virus_1826.jpeg', 'person1108_virus_1833.jpeg', 'person1127_bacteria_3068.jpeg', 'person1129_virus_1857.jpeg', 'person1131_bacteria_3073.jpeg']
+
+==== 3. IMAGE DIMENSIONS ====
+--- train/NORMAL (n=1341) ---
+  width : min=912 max=2916 mean=1667.7 median=1640
+  height: min=672 max=2663 mean=1381.4 median=1328
+  aspect: min=0.877 max=1.808 mean=1.228 median=1.223
+  width  quantiles [0.05, 0.25, 0.5, 0.75, 0.95]: [np.float64(1252.0), np.float64(1466.0), np.float64(1640.0), np.float64(1824.0), np.float64(2202.0)]
+  height quantiles [0.05, 0.25, 0.5, 0.75, 0.95]: [np.float64(967.0), np.float64(1152.0), np.float64(1328.0), np.float64(1542.0), np.float64(1986.0)]
+  aspect quantiles [0.05, 0.25, 0.5, 0.75, 0.95]: [np.float64(1.018), np.float64(1.138), np.float64(1.223), np.float64(1.311), np.float64(1.453)]
+--- train/PNEUMONIA (n=3875) ---
+  width : min=384 max=2772 mean=1200.5 median=1168
+  height: min=127 max=2304 mean=825.0 median=776
+  aspect: min=0.835 max=3.379 mean=1.514 median=1.488
+  width  quantiles [0.05, 0.25, 0.5, 0.75, 0.95]: [np.float64(808.0), np.float64(1000.0), np.float64(1168.0), np.float64(1368.0), np.float64(1720.0)]
+  height quantiles [0.05, 0.25, 0.5, 0.75, 0.95]: [np.float64(472.0), np.float64(640.0), np.float64(776.0), np.float64(968.0), np.float64(1334.6)]
+  aspect quantiles [0.05, 0.25, 0.5, 0.75, 0.95]: [np.float64(1.172), np.float64(1.352), np.float64(1.488), np.float64(1.644), np.float64(1.922)]
+--- val/NORMAL (n=8) ---
+  width : min=1240 max=1776 mean=1479.5 median=1446
+  height: min=928 max=1416 mean=1191.9 median=1164
+  aspect: min=1.123 max=1.388 mean=1.244 median=1.225
+  width  quantiles [0.05, 0.25, 0.5, 0.75, 0.95]: [np.float64(1251.2), np.float64(1284.0), np.float64(1446.0), np.float64(1658.0), np.float64(1762.0)]
+  height quantiles [0.05, 0.25, 0.5, 0.75, 0.95]: [np.float64(967.2), np.float64(1088.0), np.float64(1164.5), np.float64(1330.5), np.float64(1416.0)]
+  aspect quantiles [0.05, 0.25, 0.5, 0.75, 0.95]: [np.float64(1.151), np.float64(1.202), np.float64(1.225), np.float64(1.274), np.float64(1.368)]
+--- val/PNEUMONIA (n=8) ---
+  width : min=968 max=1664 mean=1217.0 median=1172
+  height: min=592 max=1128 mean=814.0 median=788
+  aspect: min=1.252 max=1.735 mean=1.513 median=1.503
+  width  quantiles [0.05, 0.25, 0.5, 0.75, 0.95]: [np.float64(984.8), np.float64(1058.0), np.float64(1172.0), np.float64(1296.0), np.float64(1577.2)]
+  height quantiles [0.05, 0.25, 0.5, 0.75, 0.95]: [np.float64(614.4), np.float64(662.0), np.float64(788.0), np.float64(946.0), np.float64(1066.4)]
+  aspect quantiles [0.05, 0.25, 0.5, 0.75, 0.95]: [np.float64(1.323), np.float64(1.47), np.float64(1.503), np.float64(1.57), np.float64(1.7)]
+--- test/NORMAL (n=234) ---
+  width : min=984 max=2752 mean=1800.3 median=1762
+  height: min=496 max=2713 mean=1369.1 median=1318
+  aspect: min=0.928 max=2.107 mean=1.368 median=1.353
+  width  quantiles [0.05, 0.25, 0.5, 0.75, 0.95]: [np.float64(1262.6), np.float64(1533.0), np.float64(1762.0), np.float64(2030.2), np.float64(2485.6)]
+  height quantiles [0.05, 0.25, 0.5, 0.75, 0.95]: [np.float64(812.6), np.float64(1040.0), np.float64(1317.5), np.float64(1638.8), np.float64(2153.0)]
+  aspect quantiles [0.05, 0.25, 0.5, 0.75, 0.95]: [np.float64(1.093), np.float64(1.213), np.float64(1.353), np.float64(1.518), np.float64(1.713)]
+--- test/PNEUMONIA (n=390) ---
+  width : min=728 max=2000 mean=1140.8 median=1111
+  height: min=344 max=1456 mean=765.3 median=736
+  aspect: min=1.000 max=2.581 mean=1.527 median=1.506
+  width  quantiles [0.05, 0.25, 0.5, 0.75, 0.95]: [np.float64(856.0), np.float64(992.0), np.float64(1111.0), np.float64(1256.0), np.float64(1548.4)]
+  height quantiles [0.05, 0.25, 0.5, 0.75, 0.95]: [np.float64(520.0), np.float64(632.0), np.float64(736.0), np.float64(871.8), np.float64(1132.4)]
+  aspect quantiles [0.05, 0.25, 0.5, 0.75, 0.95]: [np.float64(1.221), np.float64(1.382), np.float64(1.506), np.float64(1.657), np.float64(1.887)]
+--- ALL NORMAL (n=1583) ---
+  width : min=912 max=2916 mean=1686.4 median=1654
+  height: min=496 max=2713 mean=1378.6 median=1323
+  aspect: min=0.877 max=2.107 mean=1.249 median=1.235
+  width  quantiles [0.05, 0.25, 0.5, 0.75, 0.95]: [np.float64(1252.4), np.float64(1472.0), np.float64(1654.0), np.float64(1848.0), np.float64(2279.6)]
+  height quantiles [0.05, 0.25, 0.5, 0.75, 0.95]: [np.float64(927.1), np.float64(1140.0), np.float64(1323.0), np.float64(1554.0), np.float64(2035.6)]
+  aspect quantiles [0.05, 0.25, 0.5, 0.75, 0.95]: [np.float64(1.023), np.float64(1.145), np.float64(1.235), np.float64(1.336), np.float64(1.519)]
+--- ALL PNEUMONIA (n=4273) ---
+  width : min=384 max=2772 mean=1195.1 median=1160
+  height: min=127 max=2304 mean=819.6 median=776
+  aspect: min=0.835 max=3.379 mean=1.515 median=1.490
+  width  quantiles [0.05, 0.25, 0.5, 0.75, 0.95]: [np.float64(816.6), np.float64(1000.0), np.float64(1160.0), np.float64(1360.0), np.float64(1709.6)]
+  height quantiles [0.05, 0.25, 0.5, 0.75, 0.95]: [np.float64(480.0), np.float64(640.0), np.float64(776.0), np.float64(960.0), np.float64(1320.0)]
+  aspect quantiles [0.05, 0.25, 0.5, 0.75, 0.95]: [np.float64(1.176), np.float64(1.355), np.float64(1.49), np.float64(1.645), np.float64(1.917)]
+figure saved: hist_width.png
+figure saved: hist_height.png
+figure saved: hist_aspect.png
+figure saved: scatter_wh.png
+figure saved: class_counts.png
+
+==== 4. PATIENT ID ANALYSIS ====
+-- PNEUMONIA --
+rows with method 'person_regex': 4273
+rows with UNKNOWN person prefix: 0
+  UNKNOWN examples: []
+unique person IDs: 1674
+images per person: min 1 max 31 median 2.0 mean 2.55
+PNEUMONIA subtype counts: {'bacteria': np.int64(2780), 'virus': np.int64(1493)}
+PNEUMONIA person IDs appearing in >1 split: 170
+   CROSS person1 ['test', 'train']
+   CROSS person10 ['test', 'train']
+   CROSS person100 ['test', 'train']
+   CROSS person101 ['test', 'train']
+   CROSS person102 ['test', 'train']
+   CROSS person103 ['test', 'train']
+   CROSS person104 ['test', 'train']
+   CROSS person108 ['test', 'train']
+   CROSS person109 ['test', 'train']
+   CROSS person11 ['test', 'train']
+   CROSS person110 ['test', 'train']
+   CROSS person111 ['test', 'train']
+   CROSS person112 ['test', 'train']
+   CROSS person113 ['test', 'train']
+   CROSS person114 ['test', 'train']
+   CROSS person117 ['test', 'train']
+   CROSS person118 ['test', 'train']
+   CROSS person119 ['test', 'train']
+   CROSS person120 ['test', 'train']
+   CROSS person122 ['test', 'train']
+   CROSS person123 ['test', 'train']
+   CROSS person124 ['test', 'train']
+   CROSS person125 ['test', 'train']
+   CROSS person126 ['test', 'train']
+   CROSS person128 ['test', 'train']
+   CROSS person130 ['test', 'train']
+   CROSS person131 ['test', 'train']
+   CROSS person132 ['test', 'train']
+   CROSS person133 ['test', 'train']
+   CROSS person134 ['test', 'train']
+   CROSS person135 ['test', 'train']
+   CROSS person137 ['test', 'train']
+   CROSS person138 ['test', 'train']
+   CROSS person139 ['test', 'train']
+   CROSS person14 ['test', 'train']
+   CROSS person140 ['test', 'train']
+   CROSS person141 ['test', 'train']
+   CROSS person142 ['test', 'train']
+   CROSS person143 ['test', 'train']
+   CROSS person145 ['test', 'train']
+   CROSS person146 ['test', 'train']
+   CROSS person147 ['test', 'train']
+   CROSS person149 ['test', 'train']
+   CROSS person15 ['test', 'train']
+   CROSS person151 ['test', 'train']
+   CROSS person152 ['test', 'train']
+   CROSS person153 ['test', 'train']
+   CROSS person154 ['test', 'train']
+   CROSS person155 ['test', 'train']
+   CROSS person157 ['test', 'train']
+-- NORMAL --
+Top NORMAL filename patterns (digits->#):
+     858  NORMAL#-IM-#-#   e.g. NORMAL2-IM-0383-0001.jpeg
+     582  IM-#-#   e.g. IM-0115-0001.jpeg
+      84  IM-#-#-#   e.g. IM-0429-0001-0001.jpeg
+      59  NORMAL#-IM-#-#-#   e.g. NORMAL2-IM-0395-0001-0001.jpeg
+NORMAL patient_id_method counts: {'normal2_im': np.int64(917), 'im': np.int64(666)}
+NORMAL group candidates: unique 1444 images/group min 1 max 4 median 1.0
+NORMAL groups with >1 image (top 20):
+     4  IM-0629
+     4  IM-0553
+     4  IM-0523
+     3  IM-0437
+     3  IM-0439
+     3  IM-0491
+     3  IM-0467
+     3  IM-0497
+     3  IM-0011
+     3  IM-0033
+     3  IM-0429
+     3  NORMAL2-IM-1269
+     3  NORMAL2-IM-1154
+     3  IM-0499
+     3  IM-0509
+     3  IM-0511
+     3  IM-0519
+     3  IM-0525
+     3  IM-0501
+     3  IM-0549
+NORMAL group candidates appearing in >1 split: 0
+patient_summary.csv written rows: 3288
+
+==== 5. DUPLICATE / LEAKAGE (sha256) ====
+hashes with duplicates: 30 files involved: 62
+duplicate groups within same split: 30
+duplicate groups spanning >1 split (LEAKAGE): 0
+duplicate groups spanning >1 class: 0
+   DUPGROUP 0033d6b3f444 [('train', 'PNEUMONIA', 'person1159_virus_1944.jpeg'), ('train', 'PNEUMONIA', 'person1159_virus_1945.jpeg')]
+   DUPGROUP 1679da384445 [('train', 'PNEUMONIA', 'person124_virus_246.jpeg'), ('train', 'PNEUMONIA', 'person124_virus_247.jpeg')]
+   DUPGROUP 1e273d0058cf [('train', 'PNEUMONIA', 'person1261_virus_2147.jpeg'), ('train', 'PNEUMONIA', 'person1261_virus_2148.jpeg')]
+   DUPGROUP 3853a4552e0b [('train', 'NORMAL', 'NORMAL2-IM-0587-0001-0001.jpeg'), ('train', 'NORMAL', 'NORMAL2-IM-0587-0001-0002.jpeg')]
+   DUPGROUP 409f0f6c0f8a [('test', 'NORMAL', 'NORMAL2-IM-0173-0001-0001.jpeg'), ('test', 'NORMAL', 'NORMAL2-IM-0173-0001-0002.jpeg')]
+   DUPGROUP 4d9f500ccfdd [('train', 'PNEUMONIA', 'person1481_bacteria_3866.jpeg'), ('train', 'PNEUMONIA', 'person1481_bacteria_3867.jpeg')]
+   DUPGROUP 4e4df8461fc3 [('train', 'PNEUMONIA', 'person1496_bacteria_3909.jpeg'), ('train', 'PNEUMONIA', 'person1496_bacteria_3910.jpeg')]
+   DUPGROUP 514afd0fa610 [('test', 'PNEUMONIA', 'person1661_virus_2872.jpeg'), ('test', 'PNEUMONIA', 'person1661_virus_2873.jpeg')]
+   DUPGROUP 5824d55942d9 [('test', 'PNEUMONIA', 'person128_bacteria_606.jpeg'), ('test', 'PNEUMONIA', 'person128_bacteria_607.jpeg')]
+   DUPGROUP 704f62a1b29b [('train', 'PNEUMONIA', 'person1628_bacteria_4297.jpeg'), ('train', 'PNEUMONIA', 'person1628_bacteria_4298.jpeg')]
+   DUPGROUP 81090d9a66e2 [('train', 'PNEUMONIA', 'person258_bacteria_1207.jpeg'), ('train', 'PNEUMONIA', 'person258_bacteria_1208.jpeg'), ('train', 'PNEUMONIA', 'person258_bacteria_1209.jpeg')]
+   DUPGROUP 8b49e842fd53 [('train', 'PNEUMONIA', 'person1619_bacteria_4267.jpeg'), ('train', 'PNEUMONIA', 'person1619_bacteria_4268.jpeg')]
+   DUPGROUP 8c917bd0806b [('train', 'PNEUMONIA', 'person266_bacteria_1237.jpeg'), ('train', 'PNEUMONIA', 'person266_bacteria_1238.jpeg')]
+   DUPGROUP 8edeff060849 [('train', 'PNEUMONIA', 'person30_bacteria_156.jpeg'), ('train', 'PNEUMONIA', 'person30_bacteria_157.jpeg')]
+   DUPGROUP 9217ffd910b2 [('train', 'PNEUMONIA', 'person1372_bacteria_3501.jpeg'), ('train', 'PNEUMONIA', 'person1372_bacteria_3502.jpeg'), ('train', 'PNEUMONIA', 'person1372_bacteria_3503.jpeg')]
+   DUPGROUP 93d9851b858e [('train', 'PNEUMONIA', 'person1481_bacteria_3864.jpeg'), ('train', 'PNEUMONIA', 'person1481_bacteria_3865.jpeg')]
+   DUPGROUP 9abe31146a4e [('train', 'PNEUMONIA', 'person1312_bacteria_3317.jpeg'), ('train', 'PNEUMONIA', 'person1312_bacteria_3318.jpeg')]
+   DUPGROUP 9f6a730d3e94 [('train', 'PNEUMONIA', 'person162_virus_321.jpeg'), ('train', 'PNEUMONIA', 'person162_virus_322.jpeg')]
+   DUPGROUP a0bb88fd5d30 [('train', 'PNEUMONIA', 'person834_bacteria_2747.jpeg'), ('train', 'PNEUMONIA', 'person834_bacteria_2748.jpeg')]
+   DUPGROUP baaa29769ca5 [('train', 'PNEUMONIA', 'person264_bacteria_1230.jpeg'), ('train', 'PNEUMONIA', 'person264_bacteria_1231.jpeg')]
+   DUPGROUP bdcb46c2b61f [('train', 'PNEUMONIA', 'person357_virus_734.jpeg'), ('train', 'PNEUMONIA', 'person357_virus_735.jpeg')]
+   DUPGROUP ca083e6fbd86 [('train', 'PNEUMONIA', 'person1349_bacteria_3436.jpeg'), ('train', 'PNEUMONIA', 'person1349_bacteria_3437.jpeg')]
+   DUPGROUP d27eeee3cb7d [('train', 'PNEUMONIA', 'person401_virus_797.jpeg'), ('train', 'PNEUMONIA', 'person401_virus_798.jpeg')]
+   DUPGROUP d33d41ad42d6 [('test', 'NORMAL', 'NORMAL2-IM-0246-0001-0001.jpeg'), ('test', 'NORMAL', 'NORMAL2-IM-0246-0001-0002.jpeg')]
+   DUPGROUP d53c4dc3d071 [('train', 'PNEUMONIA', 'person1481_bacteria_3862.jpeg'), ('train', 'PNEUMONIA', 'person1481_bacteria_3863.jpeg')]
+   DUPGROUP d77e4825fff2 [('train', 'PNEUMONIA', 'person1343_bacteria_3413.jpeg'), ('train', 'PNEUMONIA', 'person1343_bacteria_3414.jpeg')]
+   DUPGROUP dfb4e7b7b967 [('test', 'PNEUMONIA', 'person134_bacteria_643.jpeg'), ('test', 'PNEUMONIA', 'person134_bacteria_644.jpeg')]
+   DUPGROUP e324d8180008 [('train', 'PNEUMONIA', 'person1430_bacteria_3695.jpeg'), ('train', 'PNEUMONIA', 'person1430_bacteria_3696.jpeg')]
+   DUPGROUP f4714afae1b6 [('train', 'PNEUMONIA', 'person688_virus_1281.jpeg'), ('train', 'PNEUMONIA', 'person688_virus_1282.jpeg')]
+   DUPGROUP fae2085830a4 [('test', 'NORMAL', 'NORMAL2-IM-0095-0001.jpeg'), ('test', 'NORMAL', 'NORMAL2-IM-0096-0001.jpeg')]
+
+==== 6. CLASS IMBALANCE ====
+train  NORMAL=1341 PNEUMONIA=3875 ratio PNEU:NORMAL=2.89:1
+val    NORMAL=8 PNEUMONIA=8 ratio PNEU:NORMAL=1.00:1
+test   NORMAL=234 PNEUMONIA=390 ratio PNEU:NORMAL=1.67:1
+train+val NORMAL=1349 PNEUMONIA=3883 ratio=2.88:1
+
+==== 7. SUSPICIOUS / EXTREME IMAGES ====
+aspect 0.5%/99.5% = 0.962/2.482
+extreme dim/AR anomalies: 426
+Computing brightness (thumbnail) for near-black/white detection...
+  brightness progress 1000
+  brightness progress 2000
+  brightness progress 3000
+  brightness progress 4000
+  brightness progress 5000
+anomalies.csv written rows: 426
+anomaly reason counts:
+    very_wide 239
+    small_384x127 1
+    small_399x164 1
+    small_400x138 1
+    small_407x178 1
+    small_415x354 1
+    small_428x172 1
+    small_428x256 1
+    small_437x144 1
+    small_438x168 1
+    small_438x179 1
+    small_438x190 1
+    small_439x227 1
+    small_441x255 1
+    small_444x262 1
+    small_445x140 1
+    small_445x187 1
+    small_445x199 1
+    small_445x232 1
+    small_446x132 1
+    small_446x232 1
+    small_448x173 1
+    small_450x230 1
+    small_450x250 1
+    small_452x180 1
+    small_453x182 1
+    small_455x178 1
+    small_456x280 1
+    small_457x295 1
+    small_460x157 1
+    small_461x175 1
+    small_462x200 1
+    small_462x238 1
+    small_462x241 1
+    small_467x217 1
+    small_468x242 1
+    small_469x270 1
+    small_479x211 1
+    small_480x167 1
+    small_481x234 1
+    small_482x163 1
+    small_482x209 1
+    small_483x178 1
+    small_485x229 1
+    small_486x186 1
+    small_486x191 1
+    small_490x189 1
+    small_492x156 1
+    small_493x289 1
+    small_494x151 1
+    small_494x196 1
+    small_496x240 1
+    small_499x188 1
+    small_499x261 1
+    small_500x198 1
+    small_500x244 1
+    small_500x250 1
+    small_502x307 1
+    small_503x260 1
+    small_507x244 1
+    small_508x206 1
+    small_508x218 1
+    small_514x269 1
+    small_514x275 1
+    small_525x282 1
+    small_527x219 1
+    small_529x207 1
+    small_532x255 1
+    small_546x219 1
+    small_549x229 1
+    small_550x276 1
+    small_550x279 1
+    small_557x177 1
+    small_564x194 1
+    small_567x258 1
+    small_570x305 1
+    small_571x310 1
+    small_577x260 1
+    small_580x294 1
+    small_607x347 1
+    small_620x359 1
+    small_640x317 1
+    small_645x329 1
+    small_647x329 1
+    small_649x334 1
+    small_650x378 1
+    small_654x389 1
+    small_659x363 1
+    small_664x360 1
+    small_667x322 1
+    small_668x375 1
+    small_671x393 1
+    small_679x304 1
+    small_689x366 1
+    small_692x383 1
+    small_693x356 1
+    small_705x373 1
+    small_708x292 1
+    small_711x353 1
+    small_713x353 1
+    small_720x325 1
+    small_721x349 1
+    small_724x286 1
+    small_728x368 1
+    small_728x392 1
+    small_734x307 1
+    small_752x392 1
+    small_765x375 1
+    small_810x391 1
+    small_816x368 1
+    small_888x344 1
+    small_928x392 1
+    tiny_384x127 1
+    tiny_399x164 1
+    tiny_400x138 1
+    tiny_407x178 1
+    tiny_428x172 1
+    tiny_428x256 1
+    tiny_437x144 1
+    tiny_438x168 1
+    tiny_438x179 1
+    tiny_438x190 1
+    tiny_439x227 1
+    tiny_441x255 1
+    tiny_444x262 1
+    tiny_445x140 1
+    tiny_445x187 1
+    tiny_445x199 1
+    tiny_445x232 1
+    tiny_446x132 1
+    tiny_446x232 1
+    tiny_448x173 1
+    tiny_450x230 1
+    tiny_450x250 1
+    tiny_452x180 1
+    tiny_453x182 1
+    tiny_455x178 1
+    tiny_456x280 1
+    tiny_457x295 1
+    tiny_460x157 1
+    tiny_461x175 1
+    tiny_462x200 1
+    tiny_462x238 1
+    tiny_462x241 1
+    tiny_467x217 1
+    tiny_468x242 1
+    tiny_469x270 1
+    tiny_479x211 1
+    tiny_480x167 1
+    tiny_481x234 1
+    tiny_482x163 1
+    tiny_482x209 1
+    tiny_483x178 1
+    tiny_485x229 1
+    tiny_486x186 1
+    tiny_486x191 1
+    tiny_490x189 1
+    tiny_492x156 1
+    tiny_493x289 1
+    tiny_494x151 1
+    tiny_494x196 1
+    tiny_496x240 1
+    tiny_499x188 1
+    tiny_499x261 1
+    tiny_500x198 1
+    tiny_500x244 1
+    tiny_500x250 1
+    tiny_503x260 1
+    tiny_507x244 1
+    tiny_508x206 1
+    tiny_508x218 1
+    tiny_514x269 1
+    tiny_514x275 1
+    tiny_525x282 1
+    tiny_527x219 1
+    tiny_529x207 1
+    tiny_532x255 1
+    tiny_546x219 1
+    tiny_549x229 1
+    tiny_550x276 1
+    tiny_550x279 1
+    tiny_557x177 1
+    tiny_564x194 1
+    tiny_567x258 1
+    tiny_577x260 1
+    tiny_580x294 1
+    tiny_708x292 1
+    tiny_724x286 1
+
+-- 20 smallest by area --
+   384x127 AR=3.024 PNEUMONIA/train person407_virus_811.jpeg
+   400x138 AR=2.899 PNEUMONIA/train person325_virus_660.jpeg
+   446x132 AR=3.379 PNEUMONIA/train person325_virus_661.jpeg
+   445x140 AR=3.179 PNEUMONIA/train person325_virus_659.jpeg
+   437x144 AR=3.035 PNEUMONIA/train person1689_bacteria_4474.jpeg
+   399x164 AR=2.433 PNEUMONIA/train person1693_bacteria_4485.jpeg
+   460x157 AR=2.930 PNEUMONIA/train person354_bacteria_1632.jpeg
+   407x178 AR=2.287 PNEUMONIA/train person1676_bacteria_4441.jpeg
+   438x168 AR=2.607 PNEUMONIA/train person1679_bacteria_4449.jpeg
+   428x172 AR=2.488 PNEUMONIA/train person407_virus_812.jpeg
+   494x151 AR=3.272 PNEUMONIA/train person1684_bacteria_4462.jpeg
+   492x156 AR=3.154 PNEUMONIA/train person1732_bacteria_4564.jpeg
+   448x173 AR=2.590 PNEUMONIA/train person407_virus_814.jpeg
+   438x179 AR=2.447 PNEUMONIA/train person1702_bacteria_4506.jpeg
+   482x163 AR=2.957 PNEUMONIA/train person1669_bacteria_4422.jpeg
+   480x167 AR=2.874 PNEUMONIA/train person1679_bacteria_4448.jpeg
+   461x175 AR=2.634 PNEUMONIA/train person1706_bacteria_4516.jpeg
+   455x178 AR=2.556 PNEUMONIA/train person1728_bacteria_4556.jpeg
+   452x180 AR=2.511 PNEUMONIA/train person421_virus_866.jpeg
+   453x182 AR=2.489 PNEUMONIA/train person342_virus_702.jpeg
+
+-- 15 most extreme (tallest) AR --
+   AR=0.835 1624x1944 PNEUMONIA/train person1147_virus_1917.jpeg
+   AR=0.877 1679x1914 NORMAL/train NORMAL2-IM-0818-0001-0002.jpeg
+   AR=0.888 2309x2601 NORMAL/train NORMAL2-IM-1038-0001.jpeg
+   AR=0.891 2373x2663 NORMAL/train NORMAL2-IM-0994-0001.jpeg
+   AR=0.898 2134x2376 NORMAL/train NORMAL2-IM-1341-0001.jpeg
+   AR=0.899 2091x2326 NORMAL/train NORMAL2-IM-1160-0001.jpeg
+   AR=0.901 1692x1878 NORMAL/train NORMAL2-IM-0995-0001-0002.jpeg
+   AR=0.905 1962x2169 NORMAL/train NORMAL2-IM-0567-0001.jpeg
+   AR=0.905 1962x2169 NORMAL/train NORMAL2-IM-1285-0001.jpeg
+   AR=0.908 1974x2175 NORMAL/train NORMAL2-IM-1024-0001.jpeg
+   AR=0.915 1924x2102 NORMAL/train IM-0595-0001.jpeg
+   AR=0.921 1592x1728 PNEUMONIA/train person1557_bacteria_4065.jpeg
+   AR=0.923 2016x2184 PNEUMONIA/train person799_virus_1431.jpeg
+   AR=0.926 1304x1408 PNEUMONIA/train person994_bacteria_2922.jpeg
+   AR=0.928 2517x2713 NORMAL/test NORMAL2-IM-0030-0001.jpeg
+
+-- 15 widest AR --
+   AR=3.379 446x132 PNEUMONIA/train person325_virus_661.jpeg
+   AR=3.272 494x151 PNEUMONIA/train person1684_bacteria_4462.jpeg
+   AR=3.179 445x140 PNEUMONIA/train person325_virus_659.jpeg
+   AR=3.154 492x156 PNEUMONIA/train person1732_bacteria_4564.jpeg
+   AR=3.147 557x177 PNEUMONIA/train person1719_bacteria_4541.jpeg
+   AR=3.035 437x144 PNEUMONIA/train person1689_bacteria_4474.jpeg
+   AR=3.024 384x127 PNEUMONIA/train person407_virus_811.jpeg
+   AR=2.957 482x163 PNEUMONIA/train person1669_bacteria_4422.jpeg
+   AR=2.930 460x157 PNEUMONIA/train person354_bacteria_1632.jpeg
+   AR=2.907 564x194 PNEUMONIA/train person1716_bacteria_4533.jpeg
+   AR=2.899 400x138 PNEUMONIA/train person325_virus_660.jpeg
+   AR=2.874 480x167 PNEUMONIA/train person1679_bacteria_4448.jpeg
+   AR=2.713 483x178 PNEUMONIA/train person1763_bacteria_4606.jpeg
+   AR=2.654 499x188 PNEUMONIA/train person1684_bacteria_4461.jpeg
+   AR=2.634 461x175 PNEUMONIA/train person1706_bacteria_4516.jpeg
