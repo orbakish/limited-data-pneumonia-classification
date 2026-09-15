@@ -22,7 +22,7 @@ import random
 from collections import defaultdict
 from pathlib import Path
 
-from src.paths import CLASSES, collect_images, data_root, patient_key
+from src.paths import CLASSES, DATA_ROOT_ENV, collect_images, data_root, patient_key
 
 # Fixed once. Every split in the project derives from this one number, so a single seed
 # reproduces the entire experimental design.
@@ -109,13 +109,30 @@ def write_split(name, paths, root):
 def load_split(name, root=None):
     """Read one split's file list and return it as a list of absolute Paths.
 
-    name is a stem such as "val" or "train_20". root defaults to data_root().
+    name is a stem such as "val" or "train_20"; root defaults to data_root(). Raises
+    FileNotFoundError if any listed image is missing under root: the lists name specific
+    files, so a dataset that changed after they were generated must fail here rather than
+    train silently on fewer images than the list claims.
     """
     root = root or data_root()
     text = (SPLIT_DIR / f"{name}.txt").read_text(encoding="utf-8")
     # splitlines() copes with both \n and \r\n; the `if line` drops the empty string that the
     # trailing newline leaves behind.
-    return [root / line for line in text.splitlines() if line]
+    paths = [root / line for line in text.splitlines() if line]
+
+    # One filesystem check per image - a few thousand take well under a second on a local disk.
+    missing = [path for path in paths if not path.is_file()]
+    # raise rather than assert: `python -O` strips assert statements, and this check must
+    # never be optimised away.
+    if missing:
+        raise FileNotFoundError(
+            f"{len(missing)} of {len(paths)} images in split '{name}' are missing under {root}, "
+            f"e.g. {missing[0]}. First check that this is the dataset root (set {DATA_ROOT_ENV} "
+            f"if not). Regenerate the splits only if the dataset itself changed - that rewrites "
+            f"the committed definition of the experiment: python -m src.splits"
+        )
+
+    return paths
 
 
 def check_patient_disjoint(train_paths, val_paths):
