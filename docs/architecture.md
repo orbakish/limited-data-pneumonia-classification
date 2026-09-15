@@ -76,7 +76,7 @@ flowchart TD
 | Splits | `src/splits.py` | Builds our own patient-level validation split out of the combined official train + val, then the nested 20% / 50% / 100% training subsets as prefixes of one seeded per-class shuffle. Writes the file lists to `data/splits/` and asserts both invariants. Validation and test are never subsampled. | Done |
 | Data | `src/data.py` | PyTorch `Dataset` and `DataLoader` over the committed file lists. Labels come from the parent folder name, with PNEUMONIA as the positive class, since precision/recall/F1 are defined relative to it. Every image is converted to grayscale at load, before any transform, so colour mode can never reach the model. Shuffle order and worker seeds come from a dedicated seeded generator. `load_split` refuses to return a list naming files that do not exist. | Done |
 | Augmentation | `src/augment.py` | Two jobs: the deterministic preprocessing applied to **all** splits (grayscale → 3 channels, squash to 224×224, ImageNet normalisation), and the three random regimes (none / mild / strong) from `experiments/augmentation_plan.md`, applied to the **training split only** - enforced by `build_transform(regime, train=False)` returning preprocessing alone. Magnitudes live in one `REGIMES` dict mirroring `augmentation_plan.md`. `python -m src.augment` self-checks and renders preview sheets. | Done |
-| Models | `src/models.py` | Factory returning any of the three architectures with a binary classification head. One file rather than three, since they differ only by backbone. | Stub |
+| Models | `src/models.py` | Factory returning any of the three architectures with ImageNet weights and a new two-logit output layer. One `ARCHITECTURES` table records, per architecture, the head, the Grad-CAM layer (`features.12` / `layer4` / `features.8`, all 7×7) and what stays trainable under partial fine-tuning. Also owns freezing (`set_fine_tuning`), the head/backbone parameter groups (`split_parameters`) and `train_mode`, which keeps frozen BatchNorm layers in eval. `python -m src.models` self-checks the structure. | Done |
 | Training | `src/train.py` | Architecture-agnostic training loop. Saves checkpoints to Drive in a form Grad-CAM can later hook into. | Stub |
 | Evaluation | `src/evaluate.py` | Classification metrics and confusion matrices, per the schema in `results/README.md`. | Stub |
 | Grad-CAM | `src/gradcam.py` | Forward/backward hooks on the last conv layer; computes the neuron importance weights and the ReLU'd weighted activation map (Selvaraju et al. Eq. 1–2). | Stub |
@@ -94,6 +94,16 @@ run, debugged, or re-run in isolation, and the sweep can resume where it stopped
 torchvision backbone is loaded and which classifier head is replaced. Three near-identical
 files would drift apart; one factory function keeps them provably consistent — which matters,
 since the whole experiment depends on the three being trained identically.
+
+**Where partial fine-tuning draws the line.** "Train the last stage" is not comparable across
+the three as a literal rule: ResNet18's last stage holds 75% of its convolutional parameters,
+while the last block of MobileNetV3-Small or EfficientNet-B0 holds about 30%. The boundary is
+therefore every block at the final 7×7 resolution plus the classifier - `layer4` in ResNet18,
+`features.9`-`12` in MobileNetV3-Small, `features.6`-`8` in EfficientNet-B0 - which leaves 75%,
+79% and 79% of the convolutional parameters trainable and is exactly the resolution Grad-CAM
+reads. Frozen layers are also kept in evaluation mode during training, because
+`requires_grad=False` alone does not stop BatchNorm updating its running statistics, and those
+would then drift differently under each augmentation regime.
 
 **Why Grad-CAM comes before the full sweep.** Grad-CAM needs trained weights. Building it
 after running all 27 experiments risks discovering that checkpoints were saved in an unusable
