@@ -171,6 +171,36 @@ def report_cross_split(images):
     print(f" split combinations {dict(combinations)}")
     print(f" same infection type {consistent} of {len(shared)}")
     print(f" both types in one split {mixed_within_split}")
+        # The same evidence in the form NOTES.md quotes it: official train and val pooled (they share
+    # one numbering sequence), compared with test.
+    pool_types, test_types = {}, {}
+    for split, target in (("train", pool_types), ("val", pool_types), ("test", test_types)):
+        for path in images[split]["PNEUMONIA"]:
+            match = PNEUMONIA_NAME.fullmatch(path.stem)
+            if match:
+                # setdefault returns the set stored under this number, creating an empty one first.
+                target.setdefault(int(match.group(1)), set()).add(match.group(2).lower())
+
+    # dict.keys() supports set operations, so & gives the numbers present on both sides.
+    collisions = pool_types.keys() & test_types.keys()
+    # & between two sets is their intersection: non-empty means the same type occurs on both sides.
+    same_type = sum(1 for number in collisions if pool_types[number] & test_types[number])
+
+    def bacteria_share(types):
+        """Return the fraction of (number, infection type) pairs that are bacterial."""
+        kinds = [kind for kinds_of_number in types.values() for kind in kinds_of_number]
+        # True counts as 1 and False as 0, so summing booleans counts the matches.
+        return sum(kind == "bacteria" for kind in kinds) / len(kinds)
+
+    # If test numbering restarted independently, a collision would share its type by chance with
+    # this probability: both bacterial, or both viral.
+    p_pool, p_test = bacteria_share(pool_types), bacteria_share(test_types)
+    p_same = p_pool * p_test + (1 - p_pool) * (1 - p_test)
+    both = sum(1 for kinds in pool_types.values() if len(kinds) == 2)
+    print(f" train+val vs test: {len(collisions)} shared numbers, {same_type} with the same infection type,"
+          f" about {p_same * len(collisions):.0f} expected if test numbering restarted independently")
+    print(f" train+val numbers carrying both infection types: {both} of {len(pool_types)}")
+
 
 def leading_below(values, threshold):
     """Return how many values at the start of the sequence are below the threshold."""
