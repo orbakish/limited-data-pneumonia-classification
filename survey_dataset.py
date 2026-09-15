@@ -14,7 +14,6 @@ Prints a report. Contact sheets are saved under data/processed/survey/, which is
 
 import argparse
 import random
-import re
 from collections import Counter
 from pathlib import Path
 from statistics import median
@@ -24,13 +23,10 @@ from matplotlib.figure import Figure
 from PIL import Image
 from tqdm import tqdm
 
-# Filename patterns. PNEUMONIA: person<N>_<bacteria|virus>_<M>[_<K>]. NORMAL: [NORMAL2-]IM-<A>-<B>[-<C>].
-# (?:...) groups without capturing (group numbers stay the same); the ? after it makes it optional.
-PNEUMONIA_NAME = re.compile(r"person(\d+)_(bacteria|virus)_(\d+)(?:_\d+)?", re.IGNORECASE)
-NORMAL_NAME = re.compile(r"(NORMAL2-)?IM-(\d+)-(\d+)(?:-\d+)?", re.IGNORECASE)
-SPLITS = ("train", "val", "test")
-CLASSES = ("NORMAL", "PNEUMONIA")
-IMAGE_EXTENSIONS = {".jpeg", ".jpg", ".png"}
+# The folder layout, filename patterns and file listing live in src/paths.py, shared with the
+# training pipeline - so the survey measures exactly the patient keys the splits are built on.
+from src.paths import CLASSES, PNEUMONIA_NAME, SPLITS, collect_images, patient_key
+
 SEED = 42
 BORDER_SAMPLE = 300 # images per class for the border measurement
 DARK_THRESHOLD = 0.08 # mean intensity (0-1) below which an edge row or column counts as dark background
@@ -39,30 +35,6 @@ INSET_GUIDES = (0.05, 0.10)       # guide lines drawn this far in from every edg
 
 
 
-def list_images(folder):
-    """Return the image files directly inside 'folder', sorted by name.
-    
-    Skips hidden files, because macOS zip archives add '._<name>.jpeg' metadata files that match the image extension but are not images.
-    """
-    # iterdir() yields every entry in the folder, one level deep only (no recursion).
-    # sorted() because iterdir() order depends on the filesystem; and a fixed order is what lets a 
-    # seeded shuffle produce the same subsets on every machine
-
-    return sorted(
-        path 
-        for path in folder.iterdir()
-        # .suffix is the extension including the dot, e.g ".jpeg"; .lower() also accepts ".JPEG".
-        if path.is_file() and path.suffix.lower() in IMAGE_EXTENSIONS and not path.name.startswith(".")
-    )
-
-def collect_images(data_root):
-    """Return a nested dict {split: {class: [image paths]}} covering every split and class."""
-    # The / operator on a path joins path segments, the same way on Windows and Linux.
-
-    return {
-        split: {cls: list_images(data_root / split / cls) for cls in CLASSES}
-        for split in SPLITS
-    }
 
 def report_counts(images):
     """Print image counts per split and class, with totals and the pneumonia: normal ratio."""
@@ -123,25 +95,6 @@ def report_properties(images):
         print(f" aspect min {a[0]:5.2f} median {a[1]:7.2f} max {a[2]:5.2f} (width / height)")
         # most_common() returns (item, count) pairs, most frequent first.
         print(f" modes {dict(modes.most_common())}")
-
-def patient_key(cls, path):
-    """Return a candidate patient ID parsed from the filename, or None if no pattern matches.
-
-    PNEUMONIA: bacterial and viral cases are numbered in separate sequences, so the key is the
-    number plus the infection type. NORMAL: whether <A> in IM-<A>-<B> identifies a patient is
-    what this survey checks, so the NORMAL2- prefix stays in the key to avoid merging two naming
-    schemes.
-    """
-    # .stem is the filename without its extension: "person1_virus_6.jpeg" -> "person1_virus_6".
-    # fullmatch() only succeeds if the pattern covers the entire string, not just part of it.
-    if cls == "PNEUMONIA":
-        match = PNEUMONIA_NAME.fullmatch(path.stem)
-        # group(1) is the patient number, group(2) the infection type. Both go in the key, because
-        # person53_bacteria and person53_virus are different patients.
-        return f"person{match.group(1)}_{match.group(2).lower()}" if match else None
-    match = NORMAL_NAME.fullmatch(path.stem)
-    # group(1) is None when the optional NORMAL2- prefix is absent; `or ""` turns that into "".
-    return f"{match.group(1) or ''}IM-{match.group(2)}" if match else None
 
 def report_filenames(images):
     """Print filename-pattern and candidate-patient statistics per class.
