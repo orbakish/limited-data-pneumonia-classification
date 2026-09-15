@@ -1,9 +1,176 @@
-"""Experiment configuration: the (model, data size, augmentation) triple and its E01-E27 ID.
+"""Run configurations: the 27 experiments E01-E27, the nine tuning runs T01-T09, and the recipe.
 
-Resolves in both directions against the table in experiments/experiment_log.md. IDs run
-model-major, then data size, then augmentation regime - so E01 is MobileNetV3-Small / 20% /
-none, and E27 is EfficientNet-B0 / 100% / strong. Also carries the random seed, so every run
-records exactly what produced it.
+A run is fully described by a RunConfig - which model, which training subset, which
+augmentation regime, how much of the network trains, whether the loss is class-weighted, and
+the seed - plus the RECIPE that is identical for every run (NOTES.md #18). Both are saved with
+every result, so each number can be traced back to exactly what produced it.
 
-Not implemented yet - workplan section 3.
+The E-IDs follow experiments/experiment_log.md: model first, then data size, then augmentation,
+so E01 is MobileNetV3-Small / 20% / none and E27 is EfficientNet-B0 / 100% / strong. The T-IDs
+follow the tuning-phase protocol in NOTES.md: validation only, on train_20 without augmentation.
+
+Import it:
+
+    from src.config import RECIPE, get_config
+    config = get_config("E07")            # or "T04"
+    config = get_config("E07", seed=7)    # same run, another seed
+
+or run it to print every run and check the E-IDs against experiments/experiment_log.md:
+
+    python -m src.config
 """
+
+import re
+from dataclasses import asdict, dataclass, replace
+from pathlib import Path
+
+from src.augment import REGIMES
+from src.models import ARCHITECTURES, FINE_TUNING
+from src.splits import SEED, SUBSET_FRACTIONS
+
+EXPERIMENT_LOG = Path(__file__).resolve().parents[1] / "experiments" / "experiment_log.md"
+
+# The order of these three tuples defines the E-IDs, so it mirrors experiment_log.md rather
+# than relying on the order of ARCHITECTURES or REGIMES in other modules.
+MODELS = ("mobilenet_v3_small", "resnet18", "efficientnet_b0")
+TRAIN_SPLITS = tuple(f"train_{int(fraction * 100)}" for fraction in SUBSET_FRACTIONS)
+AUGMENTATIONS = ("none", "mild", "strong")
+
+# How experiment_log.md writes each value, for the self-check.
+LOG_LABELS = {
+    "mobilenet_v3_small": "MobileNetV3-Small", "resnet18": "ResNet18",
+    "efficientnet_b0": "EfficientNet-B0",
+    "train_20": "20%", "train_50": "50%", "train_100": "100%",
+    "none": "None", "mild": "Mild", "strong": "Strong",
+}
+
+# Defaults for E01-E27 until the tuning phase decides otherwise (NOTES.md #6, #17). If T04-T09
+# pick a different winner, these two lines are the only change.
+DEFAULT_FINE_TUNING = "full"
+DEFAULT_WEIGHTED_LOSS = True
+
+
+# frozen=True makes assigning to a field after creation raise an error, so a config cannot be
+# changed part-way through a run by accident.
+@dataclass(frozen=True)
+class Recipe:
+    """Training settings shared by every run (NOTES.md #18): AdamW with a constant learning rate."""
+
+    head_lr: float = 1e-3
+    backbone_lr: float = 1e-4
+    weight_decay: float = 1e-4
+    batch_size: int = 32
+    max_epochs: int = 30
+    # Early stopping: stop after this many epochs without a better validation ROC-AUC.
+    patience: int = 5
+
+
+RECIPE = Recipe()
+
+
+@dataclass(frozen=True)
+class RunConfig:
+    """Everything that distinguishes one run from another."""
+
+    run_id: str
+    model: str
+    split: str
+    augmentation: str
+    fine_tuning: str = DEFAULT_FINE_TUNING
+    weighted_loss: bool = DEFAULT_WEIGHTED_LOSS
+    seed: int = SEED
+
+    # __post_init__ runs straight after the generated __init__ has filled in the fields.
+    def __post_init__(self):
+        """Raise ValueError if any field names a model, split, regime or mode that does not exist."""
+        allowed = {
+            "model": ARCHITECTURES, "split": TRAIN_SPLITS,
+            "augmentation": REGIMES, "fine_tuning": FINE_TUNING,
+        }
+        for field, options in allowed.items():
+            value = getattr(self, field)
+            if value not in options:
+                raise ValueError(f"{self.run_id}: unknown {field} {value!r}, expected one of {list(options)}")
+
+
+def build_experiments():
+    """Return the 27 experiments as a dict from E-ID to RunConfig, in experiment_log.md order."""
+    experiments = {}
+    number = 1
+    for model in MODELS:
+        for split in TRAIN_SPLITS:
+            for augmentation in AUGMENTATIONS:
+                # :02d pads the number to two digits, so 1 becomes "01".
+                run_id = f"E{number:02d}"
+                experiments[run_id] = RunConfig(run_id, model, split, augmentation)
+                number += 1
+    return experiments
+
+
+# Written out rather than generated: each block changes exactly one thing against T01-T03, and
+# the table should read like the protocol in NOTES.md.
+TUNING_RUNS = (
+    RunConfig("T01", "mobilenet_v3_small", "train_20", "none", "full", True),
+    RunConfig("T02", "resnet18", "train_20", "none", "full", True),
+    RunConfig("T03", "efficientnet_b0", "train_20", "none", "full", True),
+    RunConfig("T04", "mobilenet_v3_small", "train_20", "none", "partial", True),
+    RunConfig("T05", "resnet18", "train_20", "none", "partial", True),
+    RunConfig("T06", "efficientnet_b0", "train_20", "none", "partial", True),
+    RunConfig("T07", "mobilenet_v3_small", "train_20", "none", "full", False),
+    RunConfig("T08", "resnet18", "train_20", "none", "full", False),
+    RunConfig("T09", "efficientnet_b0", "train_20", "none", "full", False),
+)
+
+EXPERIMENTS = build_experiments()
+# {**a, **b} builds one dict holding the entries of both.
+RUNS = {**EXPERIMENTS, **{config.run_id: config for config in TUNING_RUNS}}
+
+
+def get_config(run_id, seed=None):
+    """Return the RunConfig for an E- or T-ID, optionally with a different seed.
+
+    Raises ValueError for an ID that does not exist.
+    """
+    if run_id not in RUNS:
+        raise ValueError(f"unknown run ID {run_id!r}, expected E01-E27 or T01-T09")
+    config = RUNS[run_id]
+    # A frozen dataclass cannot be edited, so replace() returns a copy with the seed changed.
+    return config if seed is None else replace(config, seed=seed)
+
+
+def check_against_log():
+    """Return the E-IDs that are missing from experiment_log.md, extra in it, or differ from it."""
+    logged = {}
+    for line in EXPERIMENT_LOG.read_text(encoding="utf-8").splitlines():
+        # A table row looks like "| E01 | MobileNetV3-Small |       20% | None | ...".
+        match = re.match(r"\|\s*(E\d\d)\s*\|([^|]+)\|([^|]+)\|([^|]+)\|", line)
+        if match:
+            # The * in "run_id, *values" collects every remaining item into a list.
+            run_id, *values = (part.strip() for part in match.groups())
+            logged[run_id] = values
+
+    mismatched = sorted(set(logged) - set(EXPERIMENTS))
+    for run_id, config in EXPERIMENTS.items():
+        expected = [LOG_LABELS[config.model], LOG_LABELS[config.split], LOG_LABELS[config.augmentation]]
+        # .get returns None for an ID missing from the log, which never equals a list.
+        if logged.get(run_id) != expected:
+            mismatched.append(run_id)
+    return mismatched
+
+
+def main():
+    """Print every run, then check the table against experiment_log.md and the ID lookup."""
+    for config in RUNS.values():
+        print(f"  {config.run_id}  {config.model:18s} {config.split:9s} {config.augmentation:6s} "
+              f"{config.fine_tuning:7s} weighted={config.weighted_loss}")
+    print(f"recipe: {asdict(RECIPE)}")
+    print(f"experiments: {len(EXPERIMENTS)}, tuning runs: {len(TUNING_RUNS)}")
+    print(f"E-IDs differing from experiment_log.md: {check_against_log() or 'none'}")
+    reseeded = get_config("E07", seed=7)
+    same_otherwise = asdict(reseeded) | {"seed": SEED} == asdict(get_config("E07"))
+    print(f"seed override: seed {reseeded.seed}, every other field unchanged: {same_otherwise}")
+
+
+if __name__ == "__main__":
+    main()
+
