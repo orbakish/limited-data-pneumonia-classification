@@ -45,33 +45,33 @@ We therefore build our own validation split:
 The split is made once with a fixed random seed, and the resulting file lists are written out, so
 it is identical for every experiment.
 
-### Patient-level splitting
+### Patient/group-level splitting
 
-The dataset contains multiple X-rays of the same patient, and both classes encode a patient (or
-study) identifier in the filename.
+The dataset may contain multiple X-rays from the same patient or imaging case, so related images
+should not be split between training and validation. Otherwise, the model may partially recognize
+patient- or acquisition-specific features instead of learning pathology-related features.
 
-Images from one patient must not appear in both the training and validation sets. If they do, the
-model can key on patient-specific features such as body size, positioning, or imaging hardware
-rather than on pathology, and validation scores become optimistically biased. Whole patients are
-therefore assigned to one side of the split.
+Patient/group keys were investigated during the dataset EDA.
 
-Patient keys, as established by `survey_dataset.py`:
-
-| Class | Filename pattern | Patient key |
+| Class | Filename pattern | Grouping rule |
 |---|---|---|
-| PNEUMONIA | `person<N>_<type>_<M>` (optionally `_<K>`), where type is `bacteria` or `virus` | `person<N>_<type>` |
-| NORMAL | `IM-<A>-<B>` (optionally `-<C>`), sometimes prefixed `NORMAL2-` | `[NORMAL2-]IM-<A>` |
+| PNEUMONIA | `person<N>_<type>_<M>` | `person<N>` |
+| NORMAL | `IM-<A>-<B>` or `NORMAL2-IM-<A>-<B>` | `[NORMAL2-]IM-<A>` case/group key |
 
-**The infection type must be part of the PNEUMONIA key.** Bacterial and viral cases are numbered in
-separate sequences, so `person53_bacteria_*` and `person53_virus_*` are different children. Keying on
-`person<N>` alone wrongly merges them: 809 person numbers carry both a bacterial and a viral case
-within a single split.
+For PNEUMONIA, `person<N>` is a reliable grouping key. Multiple images — and in some cases both
+`bacteria` and `virus` filenames — can share the same `person<N>` identifier, so all images with
+the same identifier are kept together.
 
-For NORMAL, filenames cannot tell a patient apart from a single imaging study, but grouping by `<A>`
-still keeps all images from the same study together.
+For NORMAL, the filename allows us to extract a consistent case/group key, but the dataset does
+not provide enough information to prove that this key corresponds to a unique physical patient.
+We therefore treat it as a case-level grouping key and document this as a dataset limitation.
 
-Using these keys, no patient appears in more than one of the official `train/`, `val/`, and `test/`
-splits, so the official test set is patient-independent and is used as-is.
+The official `train/` and `val/` folders share a consistent identifier namespace and are combined
+before creating the new validation split.
+
+The official `test/` split is kept completely untouched. PNEUMONIA numbering restarts in the test
+set, so identical `person<N>` values across train and test cannot be assumed to represent the same
+patient.
 
 ## Experimental Subsets
 
@@ -108,6 +108,26 @@ The combined subset list is not shuffled again - the DataLoader shuffles every e
 
 The validation and test sets stay fixed across all experiments. Only the training data is
 subsampled.
+
+## Dataset Exploration
+
+A full read-only exploratory analysis of the original dataset is stored under:
+
+`data/eda/`
+
+Main findings include:
+
+- 5,856 valid JPEG images and no corrupted image files
+- strong class imbalance in the training pool
+- systematic differences in image dimensions and aspect ratios between the two classes
+- 283 RGB images, all belonging to the PNEUMONIA class
+- exact-duplicate groups within individual splits, but no hash-level leakage across splits
+- several unusually small or heavily cropped PNEUMONIA images
+- potential dataset shortcuts such as acquisition text, laterality markers, wires/electrodes, and different framing
+
+The original images are kept unchanged. Channel normalization, resizing, augmentation, and other
+preprocessing are performed by the data pipeline rather than by modifying the source dataset.
+
 
 ## Important
 
