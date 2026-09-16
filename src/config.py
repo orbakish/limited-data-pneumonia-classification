@@ -138,6 +138,16 @@ def get_config(run_id, seed=None):
     return config if seed is None else replace(config, seed=seed)
 
 
+def output_stem(config):
+    """Return the filename stem for this run's metrics and figures.
+
+    Plain "E01" at the default seed, so the names match the ones results/README.md documents;
+    "E01_seed7" otherwise, so a second seed cannot overwrite the first run's results - which is
+    what question #21 would do if it ever runs the sweep more than once.
+    """
+    return config.run_id if config.seed == SEED else f"{config.run_id}_seed{config.seed}"
+
+
 def run_title(config):
     """Return the one-line label every figure and report table uses for a run."""
     return (f"{config.run_id} - {LOG_LABELS[config.model]} - {LOG_LABELS[config.split]} data - "

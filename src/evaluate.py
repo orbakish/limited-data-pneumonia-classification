@@ -35,7 +35,7 @@ from sklearn.metrics import (
     roc_auc_score,
 )
 
-from src.config import LOG_LABELS
+from src.config import LOG_LABELS, output_stem
 from src.paths import output_root, patient_key
 
 BOOTSTRAP_SAMPLES = 2000
@@ -175,8 +175,21 @@ def results_directory(root=None, kind="metrics"):
 def write_metrics(config, logits, labels, paths, root=None, samples=BOOTSTRAP_SAMPLES):
     """Write results/metrics/<ID>_metrics.json for one run and return the payload."""
     payload = metrics_payload(config, logits, labels, paths, samples)
-    path = results_directory(root) / f"{config.run_id}_metrics.json"
+    path = results_directory(root) / f"{output_stem(config)}_metrics.json"
     path.write_text(json.dumps(payload, indent=2), encoding="utf-8")
+    return payload
+
+
+def write_validation_metrics(config, logits, labels, paths, run_dir, samples=BOOTSTRAP_SAMPLES):
+    """Write validation_metrics.json beside a tuning run's checkpoints and return the payload.
+
+    A tuning run never touches the test set, so its numbers have to come from validation - and
+    experiments/tuning_log.md asks for a confidence interval, which only the bootstrap provides.
+    Kept in the run folder rather than results/metrics/, which is for test results.
+    """
+    payload = metrics_payload(config, logits, labels, paths, samples)
+    payload["split"] = "val"
+    (run_dir / "validation_metrics.json").write_text(json.dumps(payload, indent=2), encoding="utf-8")
     return payload
 
 

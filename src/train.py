@@ -9,15 +9,19 @@ Each run writes to <output root>/checkpoints/<run_id>_seed<seed>/:
 
 * best.pt - the best epoch's weights with the config, recipe, metrics and library versions.
   This is what evaluation and Grad-CAM load.
-* last.pt - weights and optimizer state after the latest epoch, so an interrupted run continues
-  where it stopped. Deleted once the run finishes.
+* last.pt - weights and optimizer state, so an interrupted run continues where it stopped.
+  Written after every improving epoch and every --resume-every epochs (default: every epoch),
+  because on Colab it goes to Drive and is about three times the model's size. Deleted once the
+  run finishes.
 * history.json - one row of numbers per epoch, and whether the run has finished.
 * train.log - every progress message printed during training, appended across resumes.
 
 The output root is $PNEUMONIA_OUTPUT_ROOT (the Colab notebook points it at Drive), otherwise the
-repo itself. Resuming gives the same result as never stopping, because each epoch's randomness
-- shuffle order, augmentation, dropout - is seeded from (seed, epoch) rather than carried over
-from the epoch before.
+repo itself. Each epoch's randomness - shuffle order, augmentation, dropout - is seeded from
+(seed, epoch) rather than carried over from the epoch before, so a resume needs no saved
+generator state. On CPU a resumed run therefore reproduces an uninterrupted one exactly; on a
+GPU, any epoch replayed after the resume point carries cuDNN's non-determinism, so it matches
+to within the rerun difference measured on Colab rather than bit for bit.
 
     python -m src.train --id T01
     python -m src.train --id T01 --max-epochs 2 --output-root C:/temp/smoke   # smoke test
@@ -137,7 +141,7 @@ def train_one_epoch(model, config, loader, criterion, optimizer, device):
     return total / len(loader)
 
 
-def log_header(logger, config, recipe, device_name, model, train_labels, val_size, weights):
+def log_header(logger, config, recipe, device_name, model, train_labels, val_size, weights, num_workers):
     """Log what this run is: its config, recipe, device, data and trainable parameters."""
     normal, pneumonia = train_labels.count(0), train_labels.count(1)
     trainable = sum(p.numel() for p in model.parameters() if p.requires_grad)
@@ -150,11 +154,19 @@ def log_header(logger, config, recipe, device_name, model, train_labels, val_siz
     weight_text = f"class weights NORMAL {weights[0]:.2f} PNEUMONIA {weights[1]:.2f}" if weights is not None else "unweighted loss"
     logger.info(f"data: {config.split} {len(train_labels)} images (NORMAL {normal}, PNEUMONIA {pneumonia}), "
                 f"val {val_size} images, {weight_text}")
-    logger.info(f"parameters: {trainable:,} trainable of {total:,}")
+    # The worker count belongs in the record: with workers, augmentation draws come from each
+    # worker's own generator, so a resumed run with a different count replays different images.
+    logger.info(f"parameters: {trainable:,} trainable of {total:,}, dataloader workers {num_workers}")
 
 
-def fit(config, recipe, run_dir, logger, num_workers):
-    """Train one run inside run_dir, resuming from last.pt if present. Returns the history rows."""
+def fit(config, recipe, run_dir, logger, num_workers, resume_every=1):
+    """Train one run inside run_dir, resuming from last.pt if present. Returns the history rows.
+
+    resume_every is how often the resume checkpoint is written, in epochs. It holds the optimizer
+    state as well as the weights - about three times the model's size - and on Colab it is
+    written to Drive, so writing it every epoch can cost a noticeable part of each epoch. A
+    larger value trades that cost against how much work a disconnect throws away.
+    """
     history_path, last_path, best_path = (run_dir / name for name in ("history.json", "last.pt", "best.pt"))
     device, device_name = get_device()
     # Deterministic cuDNN convolutions, and no benchmarking (which picks algorithms by timing
@@ -182,7 +194,8 @@ def fit(config, recipe, run_dir, logger, num_workers):
     weights = class_weights(train_labels) if config.weighted_loss else None
     # The validation loss uses this same criterion, so it is weighted too when the run is.
     criterion = nn.CrossEntropyLoss(weight=weights.to(device) if weights is not None else None)
-    log_header(logger, config, recipe, device_name, model, train_labels, len(val_loader.dataset), weights)
+    log_header(logger, config, recipe, device_name, model, train_labels, len(val_loader.dataset), weights,
+               num_workers)
 
     state = {"epoch": 0, "best_epoch": 0, "best_roc_auc": float("-inf"), "history": []}
     if last_path.exists():
@@ -195,6 +208,16 @@ def fit(config, recipe, run_dir, logger, num_workers):
         state = checkpoint["state"]
         logger.info(f"resuming after epoch {state['epoch']} "
                     f"(best val ROC-AUC {state['best_roc_auc']:.4f} at epoch {state['best_epoch']})")
+        if checkpoint.get("num_workers") != num_workers:
+            # Not fatal, but it means the replayed epochs draw different augmented images than
+            # the first pass did, so the run is no longer one reproducible whole.
+            logger.info(f"warning: resuming with {num_workers} workers, but the checkpoint was "
+                        f"written with {checkpoint.get('num_workers')}")
+        # history.json is written every epoch while last.pt may not be, so the file can hold
+        # epochs this run is about to recompute. Say so rather than letting them appear twice.
+        recorded = len(json.loads(history_path.read_text(encoding="utf-8"))["epochs"]) if history_path.exists() else 0
+        if recorded > state["epoch"]:
+            logger.info(f"epochs {state['epoch'] + 1}-{recorded} in history.json will be recomputed")
     else:
         logger.info("starting fresh")
     stopped_by = "epoch cap"
@@ -223,6 +246,9 @@ def fit(config, recipe, run_dir, logger, num_workers):
         state["history"].append(row)
         state["epoch"] = epoch
 
+        # Timed separately from the epoch: on Drive these writes are slow enough to matter, and
+        # a number mixed into "seconds" could not be told apart from slow training.
+        saving = time.perf_counter()
         if improved:
             save_atomically({"model": model.state_dict(), "config": asdict(config), "recipe": asdict(recipe),
                              "epoch": epoch, "metrics": row,
@@ -230,17 +256,26 @@ def fit(config, recipe, run_dir, logger, num_workers):
                              # torch.load refuses to unpickle by default.
                              "versions": {"torch": str(torch.__version__), "torchvision": torchvision.__version__}},
                             best_path)
-        save_atomically({"model": model.state_dict(), "optimizer": optimizer.state_dict(), "state": state,
-                         "config": asdict(config), "recipe": asdict(recipe)}, last_path)
+        # Written on every improving epoch as well as every resume_every-th one: if best.pt were
+        # newer than the state in last.pt, a resume would replay the improving epoch, GPU
+        # non-determinism could stop it improving the second time, and best.pt would keep weights
+        # that history.json no longer describes.
+        if improved or epoch % resume_every == 0:
+            save_atomically({"model": model.state_dict(), "optimizer": optimizer.state_dict(), "state": state,
+                             "config": asdict(config), "recipe": asdict(recipe), "num_workers": num_workers},
+                            last_path)
+        # Set before history.json is written, so the file records this epoch's save cost too.
+        row["save_seconds"] = round(time.perf_counter() - saving, 1)
         write_history(history_path, state["history"], finished=False)
 
         since_best = "* best" if improved else f"{epoch - state['best_epoch']}/{recipe.patience} without improvement"
         logger.info(f"epoch {epoch:2d}/{recipe.max_epochs}  train loss {train_loss:.4f}  val loss {val_loss:.4f}  "
                     f"val ROC-AUC {metrics['roc_auc']:.4f}  bal acc {metrics['balanced_accuracy']:.4f}  "
-                    f"{since_best}  ({row['seconds']:.0f}s)")
+                    f"{since_best}  ({row['seconds']:.0f}s train, {row['save_seconds']:.0f}s save)")
 
     write_history(history_path, state["history"], finished=True)
-    last_path.unlink()
+    # missing_ok: a run shorter than resume_every never wrote one.
+    last_path.unlink(missing_ok=True)
     best = state["history"][state["best_epoch"] - 1]
     minutes = sum(row["seconds"] for row in state["history"]) / 60
     logger.info(f"finished: stopped by {stopped_by} after epoch {state['epoch']}; best epoch {best['epoch']} "
@@ -249,11 +284,12 @@ def fit(config, recipe, run_dir, logger, num_workers):
     return state["history"]
 
 
-def train(config, recipe=RECIPE, root=None, num_workers=0):
+def train(config, recipe=RECIPE, root=None, num_workers=0, resume_every=1):
     """Train one run end to end, or finish an interrupted one, and return its run folder.
 
     A run whose history.json already says finished is skipped. num_workers > 0 decodes images in
-    background processes, which speeds up epochs on Colab.
+    background processes, which speeds up epochs on Colab. resume_every is how often the resume
+    checkpoint is written, in epochs.
     """
     run_dir = run_directory(config, root)
     history_path = run_dir / "history.json"
@@ -265,7 +301,7 @@ def train(config, recipe=RECIPE, root=None, num_workers=0):
     logger = open_logger(run_dir)
     # try/finally releases train.log even if training raises, e.g. on a keyboard interrupt.
     try:
-        fit(config, recipe, run_dir, logger, num_workers)
+        fit(config, recipe, run_dir, logger, num_workers, resume_every)
     finally:
         close_logger(logger)
     return run_dir
@@ -279,6 +315,8 @@ def parse_args():
     parser.add_argument("--max-epochs", type=int, default=None, help="override RECIPE.max_epochs, for smoke tests")
     parser.add_argument("--output-root", type=Path, default=None, help=f"default: ${OUTPUT_ROOT_ENV}, else the repo")
     parser.add_argument("--workers", type=int, default=0, help="DataLoader worker processes (default: 0)")
+    parser.add_argument("--resume-every", type=int, default=1,
+                        help="write the resume checkpoint every N epochs (default: 1)")
     return parser.parse_args()
 
 
@@ -286,7 +324,7 @@ def main():
     """Train the run named on the command line."""
     args = parse_args()
     recipe = RECIPE if args.max_epochs is None else replace(RECIPE, max_epochs=args.max_epochs)
-    train(get_config(args.id, seed=args.seed), recipe, args.output_root, args.workers)
+    train(get_config(args.id, seed=args.seed), recipe, args.output_root, args.workers, args.resume_every)
 
 
 if __name__ == "__main__":

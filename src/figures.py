@@ -33,7 +33,8 @@ import numpy as np
 from matplotlib.figure import Figure
 from PIL import Image
 
-from src.config import AUGMENTATIONS, EXPERIMENTS, LOG_LABELS, MODELS, TRAIN_SPLITS, run_title
+from src.config import (AUGMENTATIONS, EXPERIMENTS, LOG_LABELS, MODELS, TRAIN_SPLITS, TUNING_RUNS,
+                        output_stem, run_title)
 from src.paths import output_root
 
 # One hue per augmentation regime, in this order, everywhere in the report. Validated with the
@@ -234,17 +235,20 @@ def read_title(path):
 
 
 def audit(root=None):
-    """Check every experiment's figures exist and carry the title their config implies.
+    """Check every run's figures exist and carry the title their config implies.
 
     Returns (rows, problems): one row per expected figure, and the subset that is missing or
-    mislabelled.
+    mislabelled. An experiment expects three figures; a tuning run only has training curves,
+    since it never reaches the test split or Grad-CAM.
     """
     directory = figures_directory(root)
-    kinds = ("training_curves", "confusion_matrix", "gradcam_examples")
+    expected_kinds = {config: ("training_curves", "confusion_matrix", "gradcam_examples")
+                      for config in EXPERIMENTS.values()}
+    expected_kinds.update({config: ("training_curves",) for config in TUNING_RUNS})
     rows, problems = [], []
-    for run_id, config in EXPERIMENTS.items():
+    for config, kinds in expected_kinds.items():
         for kind in kinds:
-            path = directory / f"{run_id}_{kind}.png"
+            path = directory / f"{output_stem(config)}_{kind}.png"
             expected = run_title(config)
             if not path.exists():
                 state, found = "missing", ""
@@ -312,8 +316,11 @@ def main():
     written = read_title(directory / "E01_confusion_matrix.png")
     print(f"  title stored in the PNG: {written!r}")
     print(f"  audit finds it correctly labelled: {run_title(config) in (written or '')}")
-    _, problems = audit(args.output_root)
-    print(f"  figures still missing or mislabelled: {len(problems)} of 81 (expected: 79 missing)")
+    rows, problems = audit(args.output_root)
+    # Only the two figures drawn above exist, so everything else is expected to be missing -
+    # which is also a check that the audit counts all 27 experiments and 9 tuning runs.
+    print(f"  audit: {len(rows) - len(problems)} of {len(rows)} present "
+          f"(expected 2 of {3 * 27 + 9})")
 
 
 if __name__ == "__main__":
