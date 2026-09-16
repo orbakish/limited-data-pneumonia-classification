@@ -32,7 +32,7 @@ curves rather than an automatic switch.
 
 | T-ID | Model | Fine-tuning | Weighted loss | Best epoch | Val F1 | Val balanced accuracy | Val ROC-AUC (95% CI) | Selected | Notes |
 | ---- | ----------------- | ------- | --- | ---: | ---: | ---: | ---: | --- | ----- |
-| T01 | MobileNetV3-Small | full    | yes | TBD | TBD | TBD | TBD | TBD | baseline |
+| T01 | MobileNetV3-Small | full    | yes | 10 | 0.9770 | 0.9493 | 0.9954 (0.9924-0.9978) | TBD | baseline; 15 epochs, stopped by patience, 8.2 min on a T4 |
 | T02 | ResNet18          | full    | yes | TBD | TBD | TBD | TBD | TBD | baseline |
 | T03 | EfficientNet-B0   | full    | yes | TBD | TBD | TBD | TBD | TBD | baseline |
 | T04 | MobileNetV3-Small | partial | yes | TBD | TBD | TBD | TBD | TBD | question #6 |
