@@ -1,0 +1,26 @@
+{
+  "name": "chest_xray",
+  "source": "Kaggle - Chest X-Ray Images (Pneumonia), Kermany et al. 2018",
+  "prepared_by": "Or Bakish",
+  "prepared_on": "2026-09-15",
+  "zip_name": "chest_xray.zip",
+  "top_level_folder": "chest_xray",
+  "image_extensions": [
+    ".jpeg"
+  ],
+  "counts": {
+    "train": {
+      "NORMAL": 1341,
+      "PNEUMONIA": 3875
+    },
+    "val": {
+      "NORMAL": 8,
+      "PNEUMONIA": 8
+    },
+    "test": {
+      "NORMAL": 234,
+      "PNEUMONIA": 390
+    }
+  },
+  "notes": "Clean copy of the original Kaggle dataset. Image files and filenames were left unchanged. System files and duplicate outer archive folders were excluded. The original train and val folders are later combined and re-split by the project code; the official test split remains untouched."
+}
