@@ -1,7 +1,7 @@
 """Architecture-agnostic training loop for one run, resumable after an interruption.
 
 train(config) trains the run's model on its training split, scores the validation set after
-every epoch, keeps the checkpoint with the best validation ROC-AUC, and stops after
+every epoch, keeps the checkpoint that scores best on RECIPE.selection_metric, and stops after
 RECIPE.patience epochs without improvement or at RECIPE.max_epochs. It never checks which
 architecture it was given - everything model-specific goes through src/models.py.
 
@@ -197,7 +197,10 @@ def fit(config, recipe, run_dir, logger, num_workers, resume_every=1):
     log_header(logger, config, recipe, device_name, model, train_labels, len(val_loader.dataset), weights,
                num_workers)
 
-    state = {"epoch": 0, "best_epoch": 0, "best_roc_auc": float("-inf"), "history": []}
+    # The metric that decides which checkpoint is kept and when to stop, named once here so the
+    # loop below never hardcodes it (NOTES.md, recipe #18: balanced accuracy since 2026-09-16).
+    selection = recipe.selection_metric
+    state = {"epoch": 0, "best_epoch": 0, "best_score": float("-inf"), "history": []}
     if last_path.exists():
         # map_location loads tensors straight onto this machine's device, whatever device saved them.
         checkpoint = torch.load(last_path, map_location=device)
@@ -207,7 +210,7 @@ def fit(config, recipe, run_dir, logger, num_workers, resume_every=1):
         optimizer.load_state_dict(checkpoint["optimizer"])
         state = checkpoint["state"]
         logger.info(f"resuming after epoch {state['epoch']} "
-                    f"(best val ROC-AUC {state['best_roc_auc']:.4f} at epoch {state['best_epoch']})")
+                    f"(best val {selection} {state['best_score']:.4f} at epoch {state['best_epoch']})")
         if checkpoint.get("num_workers") != num_workers:
             # Not fatal, but it means the replayed epochs draw different augmented images than
             # the first pass did, so the run is no longer one reproducible whole.
@@ -238,9 +241,9 @@ def fit(config, recipe, run_dir, logger, num_workers, resume_every=1):
             val_loss = criterion(logits.to(device), labels.to(device)).item()
         metrics = scores(logits, labels)
 
-        improved = metrics["roc_auc"] > state["best_roc_auc"]
+        improved = metrics[selection] > state["best_score"]
         if improved:
-            state["best_roc_auc"], state["best_epoch"] = metrics["roc_auc"], epoch
+            state["best_score"], state["best_epoch"] = metrics[selection], epoch
         row = {"epoch": epoch, "train_loss": train_loss, "val_loss": val_loss, **metrics,
                "seconds": round(time.perf_counter() - started, 1)}
         state["history"].append(row)
@@ -268,6 +271,8 @@ def fit(config, recipe, run_dir, logger, num_workers, resume_every=1):
         row["save_seconds"] = round(time.perf_counter() - saving, 1)
         write_history(history_path, state["history"], finished=False)
 
+        # "* best" marks the epoch the checkpoint now holds - the best on the selection metric,
+        # which is not necessarily the best ROC-AUC printed on the same line.
         since_best = "* best" if improved else f"{epoch - state['best_epoch']}/{recipe.patience} without improvement"
         logger.info(f"epoch {epoch:2d}/{recipe.max_epochs}  train loss {train_loss:.4f}  val loss {val_loss:.4f}  "
                     f"val ROC-AUC {metrics['roc_auc']:.4f}  bal acc {metrics['balanced_accuracy']:.4f}  "
@@ -279,21 +284,27 @@ def fit(config, recipe, run_dir, logger, num_workers, resume_every=1):
     best = state["history"][state["best_epoch"] - 1]
     minutes = sum(row["seconds"] for row in state["history"]) / 60
     logger.info(f"finished: stopped by {stopped_by} after epoch {state['epoch']}; best epoch {best['epoch']} "
-                f"val ROC-AUC {best['roc_auc']:.4f} bal acc {best['balanced_accuracy']:.4f}; "
+                f"by {selection} - val ROC-AUC {best['roc_auc']:.4f} bal acc {best['balanced_accuracy']:.4f}; "
                 f"{minutes:.1f} min of training")
     return state["history"]
 
 
-def train(config, recipe=RECIPE, root=None, num_workers=0, resume_every=1):
+def train(config, recipe=RECIPE, root=None, num_workers=0, resume_every=1, force=False):
     """Train one run end to end, or finish an interrupted one, and return its run folder.
 
-    A run whose history.json already says finished is skipped. num_workers > 0 decodes images in
-    background processes, which speeds up epochs on Colab. resume_every is how often the resume
-    checkpoint is written, in epochs.
+    A run whose history.json already says finished is skipped, unless force is set - which
+    discards that run's history and resume checkpoint and trains it again from scratch, as when
+    the recipe changes. num_workers > 0 decodes images in background processes, which speeds up
+    epochs on Colab. resume_every is how often the resume checkpoint is written, in epochs.
     """
     run_dir = run_directory(config, root)
     history_path = run_dir / "history.json"
-    if history_path.exists() and json.loads(history_path.read_text(encoding="utf-8"))["finished"]:
+    if force:
+        # Both are stale the moment the run is redone; best.pt is overwritten by the new run's
+        # first improving epoch, which is every first epoch.
+        history_path.unlink(missing_ok=True)
+        (run_dir / "last.pt").unlink(missing_ok=True)
+    elif history_path.exists() and json.loads(history_path.read_text(encoding="utf-8"))["finished"]:
         print(f"{config.run_id}: already finished - {run_dir}")
         return run_dir
     # parents=True creates missing parent folders; exist_ok=True accepts a folder left by an earlier attempt.
@@ -317,6 +328,7 @@ def parse_args():
     parser.add_argument("--workers", type=int, default=0, help="DataLoader worker processes (default: 0)")
     parser.add_argument("--resume-every", type=int, default=1,
                         help="write the resume checkpoint every N epochs (default: 1)")
+    parser.add_argument("--force", action="store_true", help="retrain even if this run already finished")
     return parser.parse_args()
 
 
@@ -324,7 +336,8 @@ def main():
     """Train the run named on the command line."""
     args = parse_args()
     recipe = RECIPE if args.max_epochs is None else replace(RECIPE, max_epochs=args.max_epochs)
-    train(get_config(args.id, seed=args.seed), recipe, args.output_root, args.workers, args.resume_every)
+    train(get_config(args.id, seed=args.seed), recipe, args.output_root, args.workers, args.resume_every,
+          args.force)
 
 
 if __name__ == "__main__":

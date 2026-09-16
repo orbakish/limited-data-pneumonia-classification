@@ -10,6 +10,13 @@ rate 1e-3 for the new head and 1e-4 for the backbone, batch size 32, at most 30 
 early stopping after 5 without improvement. **Every number below comes from our own validation
 split (785 images); the official test split is untouched until the sweep.**
 
+**Checkpoint selection and early stopping follow validation balanced accuracy** (changed from
+ROC-AUC on 2026-09-16, after the first T01 run measured the problem): validation ROC-AUC
+saturated at 0.995-0.996 from epoch 5 onwards, a spread smaller than its own 95% interval
+(+-0.0025), while balanced accuracy was still climbing from 0.92 to 0.95. Selecting on ROC-AUC
+kept the epoch-7 checkpoint over epoch 10's, giving up 3.2 points of balanced accuracy and half
+the validation loss to win by 0.0006 on a saturated metric. ROC-AUC is still reported everywhere.
+
 What the three blocks decide:
 
 * **T01-T03** - the baseline, one per architecture: full fine-tuning, class-weighted loss.

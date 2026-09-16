@@ -28,13 +28,12 @@ import argparse
 import textwrap
 from pathlib import Path
 
-
 import numpy as np
 from matplotlib.figure import Figure
 from PIL import Image
 
-from src.config import (AUGMENTATIONS, EXPERIMENTS, LOG_LABELS, MODELS, TRAIN_SPLITS, TUNING_RUNS,
-                        output_stem, run_title)
+from src.config import (AUGMENTATIONS, EXPERIMENTS, LOG_LABELS, MODELS, RECIPE, TRAIN_SPLITS,
+                        TUNING_RUNS, output_stem, run_title)
 from src.paths import output_root
 
 # One hue per augmentation regime, in this order, everywhere in the report. Validated with the
@@ -108,8 +107,9 @@ def curves_figure(history, title, path):
         if name in history[0]:
             metric_axes.plot(epochs, [row[name] for row in history], color=colour,
                              label=name.replace("_", " "))
-    # The checkpoint follows validation ROC-AUC, so mark the epoch that was actually kept.
-    best = max(history, key=lambda row: row["roc_auc"])["epoch"]
+    # Mark the epoch the checkpoint actually holds - the best on the selection metric, which
+    # since 2026-09-16 is balanced accuracy rather than ROC-AUC.
+    best = max(history, key=lambda row: row[RECIPE.selection_metric])["epoch"]
     metric_axes.axvline(best, linestyle="--", linewidth=1, color="#6b6b68")
     metric_axes.set_xlabel(f"epoch (checkpoint kept: {best})")
     metric_axes.set_ylabel("validation metric")

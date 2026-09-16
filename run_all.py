@@ -66,7 +66,10 @@ def main():
             print(f"{run_id}: already done, skipping")
             continue
         print(f"{run_id}: starting")
-        run(run_id, args.seed, args.workers, args.output_root, resume_every=args.resume_every)
+        # force reaches train() as well: without it a finished run would be skipped there
+        # even though already_done was bypassed here.
+        run(run_id, args.seed, args.workers, args.output_root, resume_every=args.resume_every,
+            force=args.force)
 
 
 if __name__ == "__main__":

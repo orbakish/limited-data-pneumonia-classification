@@ -50,6 +50,7 @@ def parse_args():
     parser.add_argument("--workers", type=int, default=0, help="DataLoader worker processes (default: 0)")
     parser.add_argument("--resume-every", type=int, default=1,
                         help="write the resume checkpoint every N epochs (default: 1)")
+    parser.add_argument("--force", action="store_true", help="retrain even if this run already finished")
     parser.add_argument("--output-root", type=Path, default=None, help=f"default: ${OUTPUT_ROOT_ENV}, else the repo")
     return parser.parse_args()
 
@@ -96,21 +97,21 @@ def evaluate_on_validation(config, run_dir, workers, recipe):
     return write_validation_metrics(config, logits, labels, loader.dataset.paths, run_dir)
 
 
-def run(experiment_id, seed=None, workers=0, root=None, recipe=RECIPE, resume_every=1):
+def run(experiment_id, seed=None, workers=0, root=None, recipe=RECIPE, resume_every=1, force=False):
     """Train, evaluate and plot one config end to end.
 
     Returns the metrics dict: test metrics for an experiment, validation metrics for a tuning
     run, which never touches the test split.
     """
     config = get_config(experiment_id, seed)
-    run_dir = train(config, recipe, root, workers, resume_every)
+    run_dir = train(config, recipe, root, workers, resume_every, force)
 
     history = json.loads((run_dir / "history.json").read_text(encoding="utf-8"))["epochs"]
     curves_figure(history, f"{run_title(config)} - training curves",
                   figures_directory(root) / f"{output_stem(config)}_training_curves.png")
 
     if config.run_id.startswith("T"):
-        best = max(history, key=lambda row: row["roc_auc"])
+        best = max(history, key=lambda row: row[recipe.selection_metric])
         metrics = evaluate_on_validation(config, run_dir, workers, recipe)
         # These four numbers are exactly the columns experiments/tuning_log.md asks for.
         print(f"{config.run_id}: tuning run, validation only - best epoch {best['epoch']}, "
@@ -132,7 +133,7 @@ def main():
     """Run the experiment named on the command line."""
     args = parse_args()
     recipe = RECIPE if args.max_epochs is None else replace(RECIPE, max_epochs=args.max_epochs)
-    run(args.id, args.seed, args.workers, args.output_root, recipe, args.resume_every)
+    run(args.id, args.seed, args.workers, args.output_root, recipe, args.resume_every, args.force)
 
 
 if __name__ == "__main__":
