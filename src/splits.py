@@ -22,7 +22,7 @@ import random
 from collections import defaultdict
 from pathlib import Path
 
-from src.paths import CLASSES, DATA_ROOT_ENV, collect_images, data_root, patient_key
+from src.paths import CLASSES, DATA_ROOT_ENV, collect_images, data_root, group_key
 
 # Fixed once. Every split in the project derives from this one number, so a single seed
 # reproduces the entire experimental design.
@@ -38,20 +38,20 @@ SUBSET_FRACTIONS = (0.20, 0.50, 1.00)
 SPLIT_DIR = Path(__file__).resolve().parents[1] / "data" / "splits"
 
 
-def group_by_patient(paths, cls):
-    """Group one class's image paths by patient key.
+def group_images(paths, cls):
+    """Group one class's image paths by their split group key (see src.paths.group_key).
 
     Returns {key: [paths]}. A filename matching no pattern gets a group of its own, keyed by
-    the filename, so an unrecognised name is never silently merged into another patient.
+    the filename, so an unrecognised name is never silently merged into another group.
     """
     # defaultdict(list) creates an empty list the first time a key is used, which removes the
     # "if key not in groups" bookkeeping a plain dict would need.
     groups = defaultdict(list)
     for path in paths:
-        key = patient_key(cls, path)
-        # `key or ...` falls back when patient_key returned None. Giving the image its own
-        # group is the safe assumption: merging two unrecognised names into one group could
-        # just as easily put one real patient on both sides of the split.
+        key = group_key(cls, path)
+        # `key or ...` falls back when group_key returned None. Giving the image its own group is
+        # the safe assumption: merging two unrecognised names could just as easily put one real
+        # patient on both sides of the split.
         groups[key or f"unmatched:{path.name}"].append(path)
     return groups
 
@@ -135,20 +135,20 @@ def load_split(name, root=None):
     return paths
 
 
-def check_patient_disjoint(train_paths, val_paths):
-    """Raise AssertionError if any patient has images in both the training and validation lists.
+def check_group_disjoint(train_paths, val_paths):
+    """Raise AssertionError if any split group has images in both the training and validation lists.
 
-    The entire point of patient-level splitting. A patient on both sides lets the model key on
-    body habitus or positioning rather than pathology, and the validation score stops meaning
-    anything.
+    The entire point of grouped splitting. A patient on both sides lets the model key on body
+    habitus or positioning rather than pathology, and the validation score stops meaning
+    anything. Checked with group_key, the same key the split was built with.
     """
     def keys(paths):
         # The class is the name of the folder the image sits in, since the layout is
         # <split>/<class>/<file>: .parent is the containing folder, .name its last component.
-        return {patient_key(path.parent.name, path) or path.name for path in paths}
+        return {group_key(path.parent.name, path) or path.name for path in paths}
 
     overlap = keys(train_paths) & keys(val_paths)
-    assert not overlap, f"{len(overlap)} patients in both train and validation, e.g. {sorted(overlap)[:5]}"
+    assert not overlap, f"{len(overlap)} groups in both train and validation, e.g. {sorted(overlap)[:5]}"
 
 
 def check_nesting(subset_paths):
@@ -182,13 +182,13 @@ def build_splits(seed=SEED, val_fraction=VAL_FRACTION, root=None):
         pool = sorted(images["train"][cls] + images["val"][cls])
 
         # Done per class, so the NORMAL:PNEUMONIA ratio is preserved on both sides.
-        cls_val, cls_train = carve_validation(group_by_patient(pool, cls), val_fraction, f"{seed}:val:{cls}")
+        cls_val, cls_train = carve_validation(group_images(pool, cls), val_fraction, f"{seed}:val:{cls}")
         validation.extend(cls_val)
 
         for fraction, paths in nested_subsets(cls_train, SUBSET_FRACTIONS, f"{seed}:subset:{cls}").items():
             subsets[fraction].extend(paths)
 
-    check_patient_disjoint(subsets[1.00], validation)
+    check_group_disjoint(subsets[1.00], validation)
     check_nesting(subsets)
 
     written = {"val": sorted(validation), "test": sorted(images["test"]["NORMAL"] + images["test"]["PNEUMONIA"])}
