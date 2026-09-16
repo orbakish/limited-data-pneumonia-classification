@@ -226,6 +226,7 @@ results/models/
 *.pt
 *.pth
 *.ckpt
+checkpoints/
 
 # Jupyter
 .ipynb_checkpoints/
