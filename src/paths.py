@@ -7,7 +7,7 @@ the train/validation boundary and silently inflate every validation score.
 
 Not a script; import it:
 
-    from src.paths import data_root, group_key, list_images, patient_key
+    from src.paths import data_root, group_key, list_images, output_root, patient_key
 """
 
 import os
@@ -33,6 +33,11 @@ DEFAULT_DATA_ROOT = Path(__file__).resolve().parents[1] / "data" / "raw" / "ches
 # /content, which is outside the repo, so the location has to be injectable rather than fixed.
 DATA_ROOT_ENV = "PNEUMONIA_DATA_ROOT"
 
+# Where runs write their checkpoints and results. Same idea as DATA_ROOT_ENV: on Colab this
+# points into the Drive project folder, so nothing that matters lands on the session disk.
+OUTPUT_ROOT_ENV = "PNEUMONIA_OUTPUT_ROOT"
+DEFAULT_OUTPUT_ROOT = Path(__file__).resolve().parents[1]
+
 
 def data_root():
     """Return the directory holding the split folders, as a Path.
@@ -43,6 +48,12 @@ def data_root():
     # makes the one-line fallback below safe.
     override = os.environ.get(DATA_ROOT_ENV)
     return Path(override) if override else DEFAULT_DATA_ROOT
+
+
+def output_root():
+    """Return the directory runs write into: $PNEUMONIA_OUTPUT_ROOT if set, otherwise the repo."""
+    override = os.environ.get(OUTPUT_ROOT_ENV)
+    return Path(override) if override else DEFAULT_OUTPUT_ROOT
 
 
 def list_images(folder):

@@ -138,6 +138,12 @@ def get_config(run_id, seed=None):
     return config if seed is None else replace(config, seed=seed)
 
 
+def run_title(config):
+    """Return the one-line label every figure and report table uses for a run."""
+    return (f"{config.run_id} - {LOG_LABELS[config.model]} - {LOG_LABELS[config.split]} data - "
+            f"augmentation {config.augmentation} - seed {config.seed}")
+
+
 def check_against_log():
     """Return the E-IDs that are missing from experiment_log.md, extra in it, or differ from it."""
     logged = {}

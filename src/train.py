@@ -26,7 +26,6 @@ from the epoch before.
 import argparse
 import json
 import logging
-import os
 import random
 import sys
 import time
@@ -43,15 +42,7 @@ from src.config import RECIPE, get_config
 from src.data import build_dataloader
 from src.evaluate import predict, scores
 from src.models import build_model, set_fine_tuning, split_parameters, train_mode
-
-OUTPUT_ROOT_ENV = "PNEUMONIA_OUTPUT_ROOT"
-REPO_ROOT = Path(__file__).resolve().parents[1]
-
-
-def output_root():
-    """Return the folder runs are written under: $PNEUMONIA_OUTPUT_ROOT if set, else the repo."""
-    override = os.environ.get(OUTPUT_ROOT_ENV)
-    return Path(override) if override else REPO_ROOT
+from src.paths import OUTPUT_ROOT_ENV, output_root
 
 
 def run_directory(config, root=None):
