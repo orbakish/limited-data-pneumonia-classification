@@ -1,8 +1,8 @@
 # Chest X-Ray Dataset — Exploratory Data Analysis (EDA) Report
 
-**Scope:** READ-ONLY analysis. No file was deleted, moved, renamed, resized, or otherwise modified.
-**Dataset root:** `chest_xray/chest_xray/{train,val,test}/{NORMAL,PNEUMONIA}`
-**Total images analyzed:** 5,856 (all `.jpeg`)
+**Scope:** READ-ONLY analysis. No file was deleted, moved, renamed, resized, or otherwise modified.  
+**Dataset root:** `chest_xray/chest_xray/{train,val,test}/{NORMAL,PNEUMONIA}`  
+**Total images analyzed:** 5,856 (all `.jpeg`)  
 **System files ignored:** `.DS_Store` (and any `._*`, `Thumbs.db`, `desktop.ini`).
 
 Artifacts produced alongside this report:
@@ -158,7 +158,7 @@ Full list of duplicate members is in `image_inventory.csv` (group by the `hash` 
 | test | 234 | 390 | 1.67 : 1 |
 | **train+val** | 1349 | 3883 | **2.88 : 1** |
 
-**Meaning (informational only, no decision made):** with ~74% PNEUMONIA in the training pool, a naive model can reach high accuracy by over-predicting PNEUMONIA. Prefer class-aware metrics (recall/precision per class, F1, ROC-AUC/PR-AUC, balanced accuracy) over raw accuracy. Whether to address it via weighted loss, resampling, or nothing is left open per your instruction. Note the tiny `val` (16 images) is far too small to be a reliable validation set — consistent with your plan to build a new validation split from train+val.
+**Meaning (informational only, no decision made):** with ~74% PNEUMONIA in the training pool, a naive model can reach high accuracy by over-predicting PNEUMONIA. Prefer class-aware metrics (recall/precision per class, F1, ROC-AUC/PR-AUC, balanced accuracy) over raw accuracy. Training uses class-weighted cross-entropy by default, while unweighted loss is evaluated during the tuning phase. Note the tiny `val` (16 images) is far too small to be a reliable validation set — consistent with your plan to build a new validation split from train+val.
 
 ---
 
@@ -197,7 +197,7 @@ From visual inspection of representative NORMAL and PNEUMONIA samples (`eda_figu
 - **Framing / cropping / borders:** NORMAL images typically full-field with black borders and more anatomy (neck→diaphragm); PNEUMONIA more zoomed onto the lungs. Black-bar borders vary.
 - **Channel encoding:** RGB-only-in-PNEUMONIA (§2) is itself a confounder.
 
-**Takeaway:** several cues (image size/AR, RGB encoding, R-marker/text placement, tubes/electrodes, pediatric framing) correlate with class for reasons unrelated to pathology. Mitigations to consider later: consistent center-crop/normalization, channel unification, and — if feasible — masking burned-in text/markers. (No changes made now.)
+**Takeaway:** several cues (image size/AR, RGB encoding, R-marker/text placement, tubes/electrodes, pediatric framing) correlate with class for reasons unrelated to pathology. Mitigations to consider later: consistent resizing/normalization, channel unification, and — if feasible — masking burned-in text/markers. (No changes made now.)
 
 ---
 
@@ -205,14 +205,14 @@ From visual inspection of representative NORMAL and PNEUMONIA samples (`eda_figu
 
 - **Grayscale normalization:** data is fundamentally single-channel X-ray. Recommend converting everything to grayscale `L` first for a consistent starting point, then normalize (per-dataset mean/std, or simple [0,1]).
 - **3-channel conversion for pretrained torchvision models:** ImageNet backbones expect 3 channels. Recommended path: **grayscale → replicate to 3 identical channels**, then apply ImageNet mean/std. This also **neutralizes the RGB-only-in-PNEUMONIA shortcut** (all images end up 3-channel identically). Do **not** feed the raw 283 RGB as-is while others are 1-channel.
-- **Resize target:** 224×224 is standard for ResNet/DenseNet/EfficientNet-B0.
+- **Resize target:** 224×224 is standard for ResNet18/MobileNetV3-Small/EfficientNet-B0.
 - **Direct resize to 224×224 — distortion risk: YES, non-trivial.** Median AR differs by class (NORMAL ≈ 1.24 vs PNEUMONIA ≈ 1.49) and the full AR range is ~0.84–3.38. A direct square resize stretches PNEUMONIA (and especially the wide crops) more than NORMAL, which **re-injects the class-correlated shape difference** and distorts anatomy.
 - **Resize strategy:** use a consistent direct resize to 224×224. Aspect-preserving letterboxing was considered, but the amount of padding would itself be correlated with class because PNEUMONIA images are systematically wider than NORMAL images. Direct resizing avoids adding artificial class-correlated borders and keeps the full image content, although the resulting geometric distortion remains a documented limitation.
 - The extreme crops (§7, e.g. `person325_virus_659/660/661`) will look very degraded at 224²; consider handling/inspecting them explicitly.
 
 ---
 
-## 10. Proposed Patient-Level Split Feasibility (no split created)
+## 10. Patient/Group-Level Split Strategy
 
 Based on filenames only, over the **train+val pool** (test stays untouched):
 
@@ -226,11 +226,11 @@ Based on filenames only, over the **train+val pool** (test stays untouched):
   - train+val NORMAL: **1,349 images across ~1,219 group candidates** (median 1 img/group, mean 1.11, max 4).
   - **Caveat:** this key prevents intra-case leakage (e.g., `…-0001` / `…-0002` of the same case stay together), but it is **NOT proven to be a unique patient** — two different `IM` numbers can even be byte-identical (`NORMAL2-IM-0095-0001` = `NORMAL2-IM-0096-0001`). Treat it as a *case/group* key, not a guaranteed patient key.
 - **What we still cannot know from filenames:**
- - Whether matching `person<N>` values across bacterial and viral filenames represent the same physical patient; the evidence suggests the two types use separate numbering sequences.
-- Whether matching `person<N>` values across official splits represent the same physical patient; filenames alone are insufficient to establish this, and the official test split is kept untouched.
-  - True patient identity behind PNEUMONIA `personN` beyond "same source case" (we assume person = patient, which is the dataset convention but unverifiable from names alone → **UNCERTAIN but the standard assumption**).
+  - Whether distinct `IM-####` groups belong to the same NORMAL patient.
+  - Whether matching `person<N>` values across bacterial and viral filenames represent the same physical patient; the evidence suggests the two types use separate numbering sequences.
+  - Whether matching `person<N>` values across official splits represent the same physical patient; filenames alone are insufficient to establish this, and the official test split is kept untouched.
 
-**Recommended approach when we build the new ~15% validation split (later):**
+**Implemented split strategy:**
 1. Merge original `train` + `val` into one pool (test frozen).
 2. Group by: PNEUMONIA → `personN`; NORMAL → `IM-####`/`NORMAL2-IM-####` stem.
 3. Split at the **group** level (GroupShuffle / StratifiedGroupKFold) stratified by class so no group crosses train/val.
@@ -247,8 +247,8 @@ Based on filenames only, over the **train+val pool** (test stays untouched):
 ## Unresolved / UNCERTAIN Questions
 
 1. **NORMAL patient identity** — `IM-####` is a case/group key, not a proven unique patient; different IM numbers can be identical images. **UNCERTAIN.**
-2. **PNEUMONIA person = physical patient** — standard dataset assumption, unverifiable from filenames. **UNCERTAIN (assumed true).**
-3. **train↔test person overlap** — almost certainly independent numbering (collisions), not leakage; cannot be proven either way. **UNCERTAIN, but irrelevant since test is frozen.**
+2. **PNEUMONIA identity** — `person<N>_<type>` is the more specific identity key; matching `person<N>` values across bacteria and virus are not proof of the same physical patient.
+3. **train↔test person overlap** — matching `person<N>` values across official splits do not establish shared physical-patient identity from filenames alone. The official test split remains untouched.
 4. Whether burned-in markers/text meaningfully bias training — flagged qualitatively; not quantified.
 
 ## Recommendations (summary)
