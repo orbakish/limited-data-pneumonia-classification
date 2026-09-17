@@ -61,8 +61,13 @@ class Recipe:
     weight_decay: float = 1e-4
     batch_size: int = 32
     max_epochs: int = 30
-    # Early stopping: stop after this many epochs without a better validation ROC-AUC.
+    # Early stopping: stop after this many epochs without a better selection metric.
     patience: int = 5
+    # Which validation metric picks the saved checkpoint and drives early stopping. Balanced
+    # accuracy rather than ROC-AUC, decided 2026-09-16 from T01: ROC-AUC saturated (epochs 7-12
+    # all inside its own confidence interval) while balanced accuracy still climbed 0.92 -> 0.95,
+    # so selecting on ROC-AUC kept a checkpoint 3 points worse on every threshold metric.
+    selection_metric: str = "balanced_accuracy"
 
 
 RECIPE = Recipe()
@@ -136,6 +141,16 @@ def get_config(run_id, seed=None):
     config = RUNS[run_id]
     # A frozen dataclass cannot be edited, so replace() returns a copy with the seed changed.
     return config if seed is None else replace(config, seed=seed)
+
+
+def output_stem(config):
+    """Return the filename stem for this run's metrics and figures.
+
+    Plain "E01" at the default seed, so the names match the ones results/README.md documents;
+    "E01_seed7" otherwise, so a second seed cannot overwrite the first run's results - which is
+    what question #21 would do if it ever runs the sweep more than once.
+    """
+    return config.run_id if config.seed == SEED else f"{config.run_id}_seed{config.seed}"
 
 
 def run_title(config):
