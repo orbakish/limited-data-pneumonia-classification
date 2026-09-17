@@ -53,25 +53,28 @@ patient- or acquisition-specific features instead of learning pathology-related 
 
 Patient/group keys were investigated during the dataset EDA.
 
-| Class | Filename pattern | Grouping rule |
-|---|---|---|
-| PNEUMONIA | `person<N>_<type>_<M>` | `person<N>` |
-| NORMAL | `IM-<A>-<B>` or `NORMAL2-IM-<A>-<B>` | `[NORMAL2-]IM-<A>` case/group key |
+| Class | Filename pattern | Identity key | Split grouping key |
+|---|---|---|---|
+| PNEUMONIA | `person<N>_<type>_<M>` | `person<N>_<type>` | `person<N>` |
+| NORMAL | `IM-<A>-<B>` or `NORMAL2-IM-<A>-<B>` | uncertain | `[NORMAL2-]IM-<A>` case/group key |
 
-For PNEUMONIA, `person<N>` is a reliable grouping key. Multiple images — and in some cases both
-`bacteria` and `virus` filenames — can share the same `person<N>` identifier, so all images with
-the same identifier are kept together.
+For PNEUMONIA, the filename evidence suggests that `bacteria` and `virus` use separate numbering
+sequences, so `person<N>_<type>` is used as the more specific identity key. However, the
+train/validation split deliberately groups by `person<N>` only. This is a conservative choice:
+it may merge different bacterial and viral cases that share the same number, reducing grouping
+resolution, but it avoids splitting a potentially related group across training and validation.
+This is documented as a dataset limitation.
 
 For NORMAL, the filename allows us to extract a consistent case/group key, but the dataset does
 not provide enough information to prove that this key corresponds to a unique physical patient.
 We therefore treat it as a case-level grouping key and document this as a dataset limitation.
 
-The official `train/` and `val/` folders share a consistent identifier namespace and are combined
-before creating the new validation split.
+The official `train/` and `val/` folders are combined before creating the new validation split,
+and the grouping rules above are applied to the combined pool.
 
-The official `test/` split is kept completely untouched. PNEUMONIA numbering restarts in the test
-set, so identical `person<N>` values across train and test cannot be assumed to represent the same
-patient.
+The official `test/` split is kept completely untouched. Because the bacterial and viral numbering
+sequences appear to be separate and the filename convention is not officially documented, matching
+`person<N>` values across official splits are not treated as proof of the same physical patient.
 
 ## Experimental Subsets
 
