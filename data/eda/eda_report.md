@@ -20,7 +20,7 @@ Artifacts produced alongside this report:
 - There is a **clear systematic difference between classes in image size and aspect ratio**: NORMAL images are larger and closer to square (median AR ≈ 1.24), PNEUMONIA images are smaller and wider (median AR ≈ 1.49). This is a real **confounder** the model could exploit.
 - **283 RGB images exist and ALL of them are PNEUMONIA (all in `train/PNEUMONIA`)**. The remaining 5,573 images are grayscale (`L`). Visually the RGB images are gray content stored as 3 channels. This mode↔class correlation is another potential shortcut.
 - **Strong class imbalance** in train (PNEUMONIA:NORMAL ≈ 2.89:1). `val` is tiny (8 + 8 = 16 images) and balanced; `test` is 234/390 (≈1.67:1).
-- **Patient IDs are recoverable for PNEUMONIA** (`personN`) and **train+val share one consistent numbering namespace**, so a patient-level split of the train+val pool is feasible for PNEUMONIA. **test is numbered independently** (person numbers restart at 1), so apparent train↔test person overlaps are numbering collisions, **not** proven same-patient leakage.
+- For **PNEUMONIA**, filename evidence suggests that `bacteria` and `virus` use separate numbering sequences, so `person<N>_<type>` is the more specific identity key. For the train/validation split we deliberately group by `person<N>` only as a conservative choice: this may merge distinct cases that share the same number, but it prevents leakage under either interpretation of the filenames. The official `test/` split remains untouched.
 - For **NORMAL**, filenames follow `IM-####-####` and `NORMAL2-IM-####-####` patterns. A group key (the `IM-####` / `NORMAL2-IM-####` stem) can be extracted, but **it is NOT proven to be a unique patient ID** (evidence below shows two different `IM` numbers pointing to byte-identical images).
 - **30 exact-duplicate hash groups (62 files)** exist. **All duplicates are within the same split and same class** → no train/val/test hash-level leakage and no cross-class duplication detected.
 - Automatic anomaly detection flagged **426 rows** (mostly very wide/very small PNEUMONIA images). The **3 most extreme "cropped" images** are `person325_virus_659/660/661` (thin horizontal strips, AR ≈ 3.2, ~445×135).
@@ -100,17 +100,13 @@ Height quantiles (5/25/50/75/95%):
 
 ## 4. Patient ID Analysis
 
-### PNEUMONIA — reliable
-- Every PNEUMONIA filename matches `person<N>_...` (`bacteria`/`virus`). Extraction rule: **`patient_id = person<N>`**. (4,273 / 4,273 matched; 0 unknown.)
-- **Unique person IDs (all splits): 1,674.**
-- **Images per person:** min **1**, max **31**, median **2**, mean **2.55**.
-- Subtypes: **bacteria = 2,780**, **virus = 1,493**.
-- A single person can carry **both** subtypes and multiple views — e.g. `person1481` has `bacteria_3862…3868` **and** `virus_2567` (see `eda_figures/insp_person1481.png`). → confirms `personN` groups multiple images of one case.
+### PNEUMONIA — filename-derived identity and grouping
 
-**Cross-split person appearance:** 170 person IDs appear in **both `train` and `test`**. **This is almost certainly a numbering artifact, not real patient leakage:**
-- `train` person numbers span **1 … 1945**; `val` continues at **1946 … 1954**; `test` **restarts at 1 … 1685**.
-- Because `test` numbering overlaps the `train` range but is a separate sequence, `person1(train) ≠ person1(test)`.
-- **UNCERTAIN:** we cannot prove from filenames whether any individual test person is physically the same as a train person. Since `test` stays untouched, this does not affect our train+val re-split. **Do not attempt to match test persons to train.**
+- Every PNEUMONIA filename follows `person<N>_<type>_<M>`, where `<type>` is `bacteria` or `virus`.
+- The filename evidence suggests that bacterial and viral cases use separate numbering sequences. Therefore, the more specific identity key is **`person<N>_<type>`**.
+- For the train/validation split, however, we deliberately use the coarser **`person<N>`** grouping key. This conservative choice may place two distinct bacterial/viral cases with the same number in the same split group, reducing grouping resolution, but it cannot split a potentially related case across training and validation.
+- Therefore, matching `person<N>` values across bacteria and virus should **not** be interpreted as proof that they belong to the same physical patient.
+- The official `test/` split is kept untouched. Filename numbering alone is not used to infer physical patient identity across official splits.
 
 ### NORMAL — group key extractable, patient identity UNCERTAIN
 Filename patterns (digits shown as `#`):
@@ -211,7 +207,7 @@ From visual inspection of representative NORMAL and PNEUMONIA samples (`eda_figu
 - **3-channel conversion for pretrained torchvision models:** ImageNet backbones expect 3 channels. Recommended path: **grayscale → replicate to 3 identical channels**, then apply ImageNet mean/std. This also **neutralizes the RGB-only-in-PNEUMONIA shortcut** (all images end up 3-channel identically). Do **not** feed the raw 283 RGB as-is while others are 1-channel.
 - **Resize target:** 224×224 is standard for ResNet/DenseNet/EfficientNet-B0.
 - **Direct resize to 224×224 — distortion risk: YES, non-trivial.** Median AR differs by class (NORMAL ≈ 1.24 vs PNEUMONIA ≈ 1.49) and the full AR range is ~0.84–3.38. A direct square resize stretches PNEUMONIA (and especially the wide crops) more than NORMAL, which **re-injects the class-correlated shape difference** and distorts anatomy.
-- **Resize+padding vs direct resize:** **prefer aspect-preserving resize + padding** (letterbox to 224×224) or resize-shorter-side-then-center-crop, so a fixed geometry doesn't encode class. This reduces the AR confounder. Direct resize is simpler but bakes in distortion; if used, be aware AR is partly a label proxy.
+- **Resize strategy:** use a consistent direct resize to 224×224. Aspect-preserving letterboxing was considered, but the amount of padding would itself be correlated with class because PNEUMONIA images are systematically wider than NORMAL images. Direct resizing avoids adding artificial class-correlated borders and keeps the full image content, although the resulting geometric distortion remains a documented limitation.
 - The extreme crops (§7, e.g. `person325_virus_659/660/661`) will look very degraded at 224²; consider handling/inspecting them explicitly.
 
 ---
@@ -220,17 +216,18 @@ From visual inspection of representative NORMAL and PNEUMONIA samples (`eda_figu
 
 Based on filenames only, over the **train+val pool** (test stays untouched):
 
-- **PNEUMONIA — feasible & reliable.**
-  - Rule: `patient_id = person<N>` (regex `^person(\d+)_`).
-  - train+val PNEUMONIA: **3,883 images across 1,642 unique persons** (median 2 imgs/person, mean 2.36, max 30).
-  - train (1…1945) and val (1946…1954) share one numbering namespace with **no overlap**, so grouping by `personN` across the merged pool is safe.
+- **PNEUMONIA — conservative group-level splitting.**
+  - Identity key: `person<N>_<type>`.
+  - Split grouping key: `person<N>`.
+  - The train+val pool contains 3,883 PNEUMONIA images across 1,642 `person<N>` split groups.
+  - Using the coarser `person<N>` key intentionally merges some likely-distinct bacterial and viral cases into the same split group. This reduces split resolution but avoids leakage under either possible interpretation of the filename convention.
 - **NORMAL — partially feasible; patient identity UNCERTAIN.**
   - Rule (best available): group key = `IM-####` or `NORMAL2-IM-####` stem (strip trailing `-000x` frame counters).
   - train+val NORMAL: **1,349 images across ~1,219 group candidates** (median 1 img/group, mean 1.11, max 4).
   - **Caveat:** this key prevents intra-case leakage (e.g., `…-0001` / `…-0002` of the same case stay together), but it is **NOT proven to be a unique patient** — two different `IM` numbers can even be byte-identical (`NORMAL2-IM-0095-0001` = `NORMAL2-IM-0096-0001`). Treat it as a *case/group* key, not a guaranteed patient key.
 - **What we still cannot know from filenames:**
-  - Whether distinct `IM-####` groups belong to the same NORMAL patient (no patient token exists in NORMAL names).
-  - Whether any `test` person equals any `train` person (independent numbering; and moot since test is frozen).
+ - Whether matching `person<N>` values across bacterial and viral filenames represent the same physical patient; the evidence suggests the two types use separate numbering sequences.
+- Whether matching `person<N>` values across official splits represent the same physical patient; filenames alone are insufficient to establish this, and the official test split is kept untouched.
   - True patient identity behind PNEUMONIA `personN` beyond "same source case" (we assume person = patient, which is the dataset convention but unverifiable from names alone → **UNCERTAIN but the standard assumption**).
 
 **Recommended approach when we build the new ~15% validation split (later):**
@@ -257,7 +254,7 @@ Based on filenames only, over the **train+val pool** (test stays untouched):
 ## Recommendations (summary)
 
 - Unify channels (grayscale → 3-channel replicate) to kill the RGB↔PNEUMONIA shortcut.
-- Use aspect-preserving resize + padding (letterbox) to 224×224 to reduce the AR confounder; avoid naive square resize if possible.
+- Resize all images consistently to 224×224 using direct resize; document the class-correlated aspect-ratio distortion as a limitation.
 - Do the new validation split and the 20/50/100% subsets at **group level** (person / IM stem), stratified by class.
 - Report class-aware metrics due to ~2.9:1 imbalance; the original `val` (16 imgs) is too small — rebuild it.
 - Keep `test` untouched and do **not** cross-reference test person IDs with train.
