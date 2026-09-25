@@ -233,8 +233,8 @@ Based on filenames only, over the **train+val pool** (test stays untouched):
 **Implemented split strategy:**
 1. Merge original `train` + `val` into one pool (test frozen).
 2. Group by: PNEUMONIA → `personN`; NORMAL → `IM-####`/`NORMAL2-IM-####` stem.
-3. Split at the **group** level (GroupShuffle / StratifiedGroupKFold) stratified by class so no group crosses train/val.
-4. Build nested **20% ⊂ 50% ⊂ 100%** subsets of the training pool at the **group** level, preserving class ratio.
+3. Split at the **group** level, separately for each class: the group keys are shuffled with a fixed seed and whole groups are moved into validation until it holds 15% of that class's images (overshooting by at most one group's images). No group crosses train/val and the class ratio is preserved; the split then asserts that no group appears on both sides.
+4. Build nested **20% ⊂ 50% ⊂ 100%** subsets of the training pool per class at the **image** level, as prefixes of one seeded shuffle of that class's training images. Grouping is not needed here: every subset lies inside the training pool, and validation and test are fixed. Drawing images rather than groups keeps the subset sizes exact in images, the quantity the experiment varies.
 
 ---
 
@@ -255,7 +255,7 @@ Based on filenames only, over the **train+val pool** (test stays untouched):
 
 - Unify channels (grayscale → 3-channel replicate) to kill the RGB↔PNEUMONIA shortcut.
 - Resize all images consistently to 224×224 using direct resize; document the class-correlated aspect-ratio distortion as a limitation.
-- Do the new validation split and the 20/50/100% subsets at **group level** (person / IM stem), stratified by class.
+- Do the new validation split at **group level** (person / IM stem), stratified by class; draw the 20/50/100% subsets from the training pool at image level, per class.
 - Report class-aware metrics due to ~2.9:1 imbalance; the original `val` (16 imgs) is too small — rebuild it.
 - Keep `test` untouched and do **not** cross-reference test person IDs with train.
 - Be aware size/AR alone is partly predictive of the label; consider it when interpreting model behavior (e.g., Grad-CAM sanity checks on markers/borders).
