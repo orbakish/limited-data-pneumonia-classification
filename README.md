@@ -17,7 +17,9 @@ The main goal is to study how training-data size and data augmentation strength 
 
 We use the publicly available Kaggle **Chest X-Ray Images (Pneumonia)** dataset.
 
-The dataset is already divided into training, validation, and test sets. Dataset files are not stored in this repository due to size limitations.
+The dataset provides official training, validation, and test splits. For this project, the original training and validation sets are combined and a new validation split is created. The official test set remains untouched.
+
+Dataset files are not stored in this repository due to size limitations.
 
 Expected local structure:
 
@@ -52,19 +54,28 @@ For each data size and model, we evaluate three augmentation regimes:
 
 This results in 27 main training configurations.
 
+All 27 experiments use partial fine-tuning and class-weighted cross-entropy, following the training recipe selected during the validation-only tuning phase.
+
 ## Evaluation
 
 Classification performance will be evaluated using:
 
+
 * Accuracy
 * Precision
 * Recall
+* Specificity
 * F1-score
+* Balanced accuracy
+* ROC-AUC
 * Confusion matrices
+* 95% confidence intervals
 
-In addition, Grad-CAM will be used to analyze model explanations.
+For threshold-dependent metrics, we report both the standard threshold of 0.5 and a threshold selected on the validation set to maximize balanced accuracy.
 
-Explanation stability will be measured on a fixed class-balanced subset of test images by comparing normalized Grad-CAM heatmaps before and after small input perturbations using cosine similarity.
+In addition, Grad-CAM is used to analyze model explanations and possible shortcut learning.
+
+Explanation stability is measured on a fixed class-balanced subset of test images using two small perturbation families: an in-family rotation and out-of-family Gaussian noise. Stability is reported separately for both perturbations.
 
 ## Project Category
 
