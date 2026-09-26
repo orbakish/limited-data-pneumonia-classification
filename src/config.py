@@ -46,9 +46,11 @@ LOG_LABELS = {
 }
 
 # Decided by the tuning phase (NOTES.md #6, #17, 2026-09-26): partial fine-tuning, because it was
-# clearly better and far more stable for MobileNetV3-Small over three seeds and never worse for the
-# other two, and one recipe applies to all three; the class-weighted loss stays, because leaving it
-# out made no detectable difference.
+# never more than 0.002 behind full on any architecture, with or without augmentation, and one
+# recipe applies to all three. Its clear lead on MobileNetV3-Small came from BatchNorm running
+# statistics that lag under full fine-tuning at torchvision's default momentum of 0.01, not from
+# worse weights (T16, NOTES.md #26); partial avoids that lag with the standard settings. The
+# class-weighted loss stays, because leaving it out made no detectable difference.
 DEFAULT_FINE_TUNING = "partial"
 DEFAULT_WEIGHTED_LOSS = True
 
