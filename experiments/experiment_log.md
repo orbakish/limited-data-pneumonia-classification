@@ -34,7 +34,10 @@ This file tracks the main training configurations and their results.
 
 ## Notes
 
-* The same train/validation/test split should be used consistently across experiments.
-* Limited-data subsets should be generated consistently for fair comparison.
-* Exact augmentation definitions and training hyperparameters should be documented once the training pipeline is finalized.
-* Grad-CAM stability will be evaluated on a fixed class-balanced subset of test images.
+* The same train/validation/test split is used consistently across all experiments.
+* Limited-data subsets are generated consistently for fair comparison.
+* All E01–E27 experiments use partial fine-tuning and class-weighted cross-entropy.
+* Training uses the frozen recipe selected during the validation-only tuning phase: up to 30 epochs with early stopping patience 5.
+* The main threshold-dependent metrics in this table use the threshold selected on validation to maximize balanced accuracy. The corresponding metrics at threshold 0.5 are recorded in the Notes column.
+* Checkpoint selection remains based on validation balanced accuracy at threshold 0.5.
+* Grad-CAM stability is evaluated on a fixed class-balanced subset of test images.
