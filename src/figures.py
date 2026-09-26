@@ -193,20 +193,31 @@ def comparison_figure(rows, metric, title, path, ylabel=None):
 
 
 def stability_gap_figure(rows, title, path):
-    """Plot in-family minus out-of-family stability: how much apparent stability is trained in."""
+    """Plot in-family minus out-of-family stability: how much apparent stability is trained in.
+
+    Uses the stored gap and its interval when every run has one (src/stability.py computes it on
+    paired resamples); otherwise the difference of the two means, without error bars.
+    """
+    stored = bool(rows) and all(row.get("gradcam_stability_gap") is not None for row in rows)
+    gaps = by_model_and_regime(rows, "gradcam_stability_gap") if stored else None
     in_family = by_model_and_regime(rows, "gradcam_stability_in_family")
     out_family = by_model_and_regime(rows, "gradcam_stability_out_of_family")
     figure = Figure(figsize=(9.6, 3.9), layout="constrained")
     panels = figure.subplots(1, len(MODELS), sharey=True)
     for panel, model in zip(panels, MODELS):
         for regime in AUGMENTATIONS:
-            sizes, inside, _, _ = in_family[model][regime]
-            _, outside, _, _ = out_family[model][regime]
-            if not sizes or not outside:
+            if stored:
+                sizes, gap, lows, highs = gaps[model][regime]
+            else:
+                sizes, inside, _, _ = in_family[model][regime]
+                _, outside, _, _ = out_family[model][regime]
+                gap = list(np.array(inside) - np.array(outside)) if sizes and outside else []
+                lows = highs = gap
+            if not sizes or not gap:
                 continue
-            gap = np.array(inside) - np.array(outside)
-            panel.plot(sizes, gap, label=regime, color=REGIME_COLOURS[regime],
-                       marker=REGIME_MARKERS[regime], markersize=6, linewidth=2)
+            errors = [np.array(gap) - np.array(lows), np.array(highs) - np.array(gap)]
+            panel.errorbar(sizes, gap, yerr=errors, label=regime, color=REGIME_COLOURS[regime],
+                           marker=REGIME_MARKERS[regime], markersize=6, linewidth=2, capsize=3)
         # Zero is the meaningful reference: no gap means no trained-in invariance.
         panel.axhline(0, color="#6b6b68", linewidth=1)
         panel.set_title(LOG_LABELS[model], fontsize=9)
@@ -245,7 +256,7 @@ def report_figures(rows, root=None):
         drawn.append(comparison_figure(
             rows, "gradcam_stability_out_of_family",
             "Grad-CAM stability under noise (out-of-family) by data size and regime",
-            directory / "summary_stability.png", "cosine similarity"))
+            directory / "summary_stability.png", "Pearson correlation (95% CI)"))
         drawn.append(stability_gap_figure(
             rows, "Trained-in invariance: in-family minus out-of-family stability",
             directory / "summary_stability_gap.png"))
@@ -307,6 +318,9 @@ def synthetic_rows():
             "f1_tuned": value - 0.02, "f1_tuned_ci_low": value - 0.035, "f1_tuned_ci_high": value - 0.005,
             "gradcam_stability_out_of_family": stability_out,
             "gradcam_stability_in_family": stability_out + 0.06 * (config.augmentation == "strong"),
+            "gradcam_stability_gap": 0.06 * (config.augmentation == "strong"),
+            "gradcam_stability_gap_ci_low": 0.06 * (config.augmentation == "strong") - 0.02,
+            "gradcam_stability_gap_ci_high": 0.06 * (config.augmentation == "strong") + 0.02,
         })
     return rows
 
