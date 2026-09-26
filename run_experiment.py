@@ -25,16 +25,13 @@ import json
 from dataclasses import replace
 from pathlib import Path
 
-import torch
-
 from src.augment import build_transform
 from src.config import RECIPE, get_config, output_stem, run_title
 from src.data import build_dataloader
 from src.evaluate import choose_threshold, predict, write_metrics, write_validation_metrics
 from src.figures import confusion_figure, curves_figure, figures_directory
-from src.models import build_model
 from src.paths import OUTPUT_ROOT_ENV
-from src.train import get_device, train
+from src.train import get_device, load_best, train
 
 
 def parse_args():
@@ -54,17 +51,6 @@ def parse_args():
     parser.add_argument("--force", action="store_true", help="retrain even if this run already finished")
     parser.add_argument("--output-root", type=Path, default=None, help=f"default: ${OUTPUT_ROOT_ENV}, else the repo")
     return parser.parse_args()
-
-
-def load_best(config, run_dir, device):
-    """Return the model with this run's best checkpoint loaded, ready to predict."""
-    # map_location puts the tensors on this machine's device, whatever device saved them.
-    checkpoint = torch.load(run_dir / "best.pt", map_location=device)
-    # pretrained=False: the checkpoint replaces every weight, so downloading the ImageNet ones
-    # first would be wasted work.
-    model = build_model(config.model, pretrained=False).to(device)
-    model.load_state_dict(checkpoint["model"])
-    return model
 
 
 def score_split(model, split, config, workers, recipe, device):

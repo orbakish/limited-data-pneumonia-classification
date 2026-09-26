@@ -55,6 +55,17 @@ def run_directory(config, root=None):
     return (root or output_root()) / "checkpoints" / f"{config.run_id}_seed{config.seed}"
 
 
+def load_best(config, run_dir, device):
+    """Return the model with this run's best checkpoint loaded, ready to predict."""
+    # map_location puts the tensors on this machine's device, whatever device saved them.
+    checkpoint = torch.load(run_dir / "best.pt", map_location=device)
+    # pretrained=False: the checkpoint replaces every weight, so downloading the ImageNet ones
+    # first would be wasted work.
+    model = build_model(config.model, pretrained=False).to(device)
+    model.load_state_dict(checkpoint["model"])
+    return model
+
+
 def get_device():
     """Return the torch device to train on, plus a readable name for it.
 
