@@ -51,14 +51,13 @@ PER_CLASS = 234
 # regimes. Both directions are measured, so no random sign is needed.
 ANGLE = 5.0
 PASSES = 2
-# Out-of-family: the noise standard deviation in 0-1 pixel units. Fixed by the calibration rule in
-# NOTES.md #7, on validation, before any model scores the test subset - so it starts unset, and an
-# experiment refuses to run until the calibrated value is committed here.
-NOISE_SIGMA = None
+# Out-of-family: the noise standard deviation in 0-1 pixel units (about 5 grey levels), fixed on
+# 2026-09-26 by the calibration in NOTES.md #7 on validation images, before any model scored the
+# test subset: the sigma at which the two families move the maps about equally for the unaugmented
+# tuning runs (T04-T06), so any gap that appears with augmentation is trained-in invariance.
+NOISE_SIGMA = 0.02
 NOISE_SEED = SEED
 CALIBRATION_SIGMAS = (0.01, 0.02, 0.03, 0.04, 0.05, 0.06, 0.08, 0.10)
-# At most this many of the 404 calibration images may change their predicted class (about 1%).
-FLIP_LIMIT = 4
 
 
 def draw_subset():
@@ -346,7 +345,10 @@ def calibrate(run_ids, output=None):
 
     Validation images only. Model-free: the mean absolute pixel change of the rotation and of each
     candidate sigma. Per checkpoint: how many images change predicted class (at margin 0) under
-    the rotation and each sigma, and the mean Pearson per family.
+    the rotation and each sigma, and the mean Pearson per family. The rule: the sigma whose mean
+    Pearson over the unaugmented checkpoints given is closest to the rotation's there. The flips
+    are reported, not used - these models change predictions even under invisible noise, so a
+    flip limit cannot be met by any useful perturbation (NOTES.md #7).
     """
     device, device_name = get_device()
     paths = calibration_sample()
@@ -364,7 +366,7 @@ def calibrate(run_ids, output=None):
     for sigma, change in sigma_change.items():
         print(f"  noise sigma {sigma:.2f}: {change:.4f}")
 
-    flips = {}
+    unaugmented = {}
     for run_id in run_ids:
         config = get_config(run_id)
         model = load_best(config, run_directory(config), device).eval()
@@ -382,29 +384,21 @@ def calibrate(run_ids, output=None):
                           for record in records)
             score = np.nanmean([family_score(record, family) for record in records])
             rows.append((sigma, changed, score))
-        flips[run_id] = {sigma: changed for sigma, changed, _ in rows}
+        if config.augmentation == "none":
+            unaugmented[run_id] = {sigma: score for sigma, _, score in rows}
         print(f"{run_id} ({config.model}): images whose class changes, of {len(paths)}; mean Pearson")
         for sigma, changed, score in rows:
             label = f"rotation +/-{ANGLE:g} deg" if sigma is None else f"noise sigma {sigma:.2f}"
             print(f"  {label:22s} {changed:3d}   {score:+.3f}")
 
-    rotation_ok = all(flips[run_id][None] <= FLIP_LIMIT for run_id in run_ids)
-    allowed = [sigma for sigma in CALIBRATION_SIGMAS if all(flips[run_id][sigma] <= FLIP_LIMIT for run_id in run_ids)]
-    closest = min(CALIBRATION_SIGMAS, key=lambda sigma: abs(sigma_change[sigma] - rotation_change))
-    if not rotation_ok:
-        print(f"RULE: the rotation itself changes more than {FLIP_LIMIT} predictions on a checkpoint - stop and discuss")
-        chosen = None
-    elif closest in allowed:
-        chosen = closest
-        print(f"RULE: sigma {chosen:.2f} - its pixel change is closest to the rotation's, and it changes at most "
-              f"{FLIP_LIMIT} predictions on every checkpoint")
-    elif allowed:
-        chosen = max(allowed)
-        print(f"RULE: the closest match ({closest:.2f}) changes too many predictions; sigma {chosen:.2f} is the "
-              f"largest within the limit")
-    else:
-        print("RULE: every sigma changes too many predictions - stop and discuss")
-        chosen = None
+    if not unaugmented:
+        print("RULE: needs at least one unaugmented checkpoint (e.g. T04-T06)")
+        return None
+    rotation_mean = np.mean([scores[None] for scores in unaugmented.values()])
+    noise_mean = {sigma: np.mean([scores[sigma] for scores in unaugmented.values()]) for sigma in CALIBRATION_SIGMAS}
+    chosen = min(CALIBRATION_SIGMAS, key=lambda sigma: abs(noise_mean[sigma] - rotation_mean))
+    print(f"RULE: on the unaugmented {', '.join(unaugmented)}, rotation's mean Pearson is {rotation_mean:.3f}; "
+          f"sigma {chosen:.2f} is the closest ({noise_mean[chosen]:.3f})")
     if output is not None and chosen is not None:
         calibration_figure(units, labels, chosen, output)
     return chosen

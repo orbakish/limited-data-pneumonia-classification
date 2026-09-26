@@ -79,7 +79,7 @@ brevity except on `roc_auc`):
     "subset": "data/splits/stability_subset.txt",
     "images": 468,
     "rotation_degrees": 5.0,
-    "noise_sigma": 0.03,
+    "noise_sigma": 0.02,
     "...": "flip rates, chance baseline, cosine and correct-only means"
   },
   "bootstrap": {
