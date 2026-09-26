@@ -151,6 +151,9 @@ def metrics_payload(config, logits, labels, paths, samples=BOOTSTRAP_SAMPLES):
         "seed": config.seed,
         "fine_tuning": config.fine_tuning,
         "weighted_loss": config.weighted_loss,
+        # ** unpacks a dict into this one. The key appears only for the T16 diagnostic, so the
+        # E-run schema agreed with Or (NOTES.md #13) stays unchanged.
+        **({"bn_momentum": config.bn_momentum} if config.bn_momentum is not None else {}),
         "images": len(labels),
         "patient_groups": len(groups),
         **scores(logits, labels),

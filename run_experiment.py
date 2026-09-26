@@ -1,4 +1,4 @@
-"""Run a single experiment, identified by its E01-E27 or T01-T09 ID.
+"""Run a single experiment, identified by its E01-E27 or T01-T16 ID.
 
 The only place an experiment is launched from. run_all.py loops the 27 configs calling this
 same code path, so anything that runs in the sweep can also be run, debugged or re-run on its
@@ -44,7 +44,7 @@ def parse_args():
         description=__doc__,
         formatter_class=argparse.RawDescriptionHelpFormatter,
     )
-    parser.add_argument("--id", required=True, help="run ID, E01 through E27 or T01 through T09")
+    parser.add_argument("--id", required=True, help="run ID, E01 through E27 or T01 through T16")
     parser.add_argument("--seed", type=int, default=None, help="override the run's seed")
     parser.add_argument("--max-epochs", type=int, default=None, help="override RECIPE.max_epochs, for smoke tests")
     parser.add_argument("--workers", type=int, default=0, help="DataLoader worker processes (default: 0)")

@@ -18,7 +18,7 @@ Each ARCHITECTURES entry records, as module paths inside the model:
 
 Import it:
 
-    from src.models import build_model, set_fine_tuning, split_parameters, train_mode
+    from src.models import build_model, set_batchnorm_momentum, set_fine_tuning, split_parameters, train_mode
     model = build_model("resnet18")
     set_fine_tuning(model, "resnet18", "partial")
     head, backbone = split_parameters(model, "resnet18")
@@ -146,6 +146,24 @@ def train_mode(model, name, mode):
             model.get_submodule(path).train()
 
 
+def set_batchnorm_momentum(model, momentum):
+    """Set the running-statistics momentum of every BatchNorm layer and return how many changed.
+
+    Momentum only decides how fast the running mean and variance - the statistics evaluation
+    mode normalises with - follow the training batches. In training mode every batch is
+    normalised with its own statistics, so the weights train identically at any momentum and
+    only what evaluation sees changes. torchvision builds MobileNetV3 with 0.01, the other two
+    with 0.1 (NOTES.md #26).
+    """
+    # _BatchNorm is the base class shared by BatchNorm1d, 2d and 3d. The leading underscore marks
+    # it as torch-internal, but it is the one class every BatchNorm variant inherits from.
+    norms = [module for module in model.modules() if isinstance(module, nn.modules.batchnorm._BatchNorm)]
+    for norm in norms:
+        norm.momentum = momentum
+    return len(norms)
+
+
+
 def count(parameters):
     """Return the total number of values across an iterable of parameters."""
     # .numel() is a tensor's element count.
@@ -183,6 +201,11 @@ def check_architecture(name):
         print(f"  {mode:7s} trainable backbone {count(backbone):>10,} of {backbone_size:,} "
               f"({count(backbone) / backbone_size:.0%}), head {count(head):,}, "
               f"BatchNorm in eval: {frozen} of {len(norms)}, consistent: {norms_ok}")
+    changed = set_batchnorm_momentum(model, 0.1)
+    # Reads every BatchNorm layer back, not the return value, so a layer the function missed shows.
+    applied = all(norm.momentum == 0.1 for norm in model.modules()
+                  if isinstance(norm, nn.modules.batchnorm._BatchNorm))
+    print(f"  BatchNorm momentum set to 0.1 on {changed} layers, all applied: {applied}")
 
 
 def main():

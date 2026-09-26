@@ -1,11 +1,11 @@
-"""Run every experiment, E01 through E27, or the nine tuning runs.
+"""Run every experiment, E01 through E27, or the sixteen tuning runs.
 
 A thin orchestrator: it does not know how to train anything, it just calls the same code path
 run_experiment.py uses, once per config. Configs whose results already exist are skipped, so a
 dropped Colab session costs one experiment rather than the whole sweep.
 
     python run_all.py
-    python run_all.py --tuning          # T01-T09 instead of the sweep
+    python run_all.py --tuning          # T01-T16 instead of the sweep
     python run_all.py --force           # re-run configs that already have results
     python run_all.py --workers 2       # DataLoader workers, worth 2 on Colab
 
@@ -34,7 +34,7 @@ def parse_args():
     # action="store_true" makes --force a flag: present means True, absent means False, and it
     # takes no value of its own.
     parser.add_argument("--force", action="store_true", help="re-run configs whose results already exist")
-    parser.add_argument("--tuning", action="store_true", help="run T01-T09 instead of E01-E27")
+    parser.add_argument("--tuning", action="store_true", help="run T01-T16 instead of E01-E27")
     parser.add_argument("--seed", type=int, default=SEED, help=f"random seed (default: {SEED})")
     parser.add_argument("--workers", type=int, default=0, help="DataLoader worker processes (default: 0)")
     parser.add_argument("--resume-every", type=int, default=1,

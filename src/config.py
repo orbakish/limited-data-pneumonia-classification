@@ -1,4 +1,4 @@
-"""Run configurations: the 27 experiments E01-E27, the nine tuning runs T01-T09, and the recipe.
+"""Run configurations: the 27 experiments E01-E27, the sixteen tuning runs T01-T16, and the recipe.
 
 A run is fully described by a RunConfig - which model, which training subset, which
 augmentation regime, how much of the network trains, whether the loss is class-weighted, and
@@ -7,7 +7,8 @@ every result, so each number can be traced back to exactly what produced it.
 
 The E-IDs follow experiments/experiment_log.md: model first, then data size, then augmentation,
 so E01 is MobileNetV3-Small / 20% / none and E27 is EfficientNet-B0 / 100% / strong. The T-IDs
-follow the tuning-phase protocol in NOTES.md: validation only, on train_20 without augmentation.
+follow the tuning-phase protocol in NOTES.md, validation only, on train_20: T01-T09 without
+augmentation, T10-T15 a spot-check with strong augmentation, and T16 a BatchNorm diagnostic.
 
 Import it:
 
@@ -44,9 +45,11 @@ LOG_LABELS = {
     "none": "None", "mild": "Mild", "strong": "Strong",
 }
 
-# Defaults for E01-E27 until the tuning phase decides otherwise (NOTES.md #6, #17). If T04-T09
-# pick a different winner, these two lines are the only change.
-DEFAULT_FINE_TUNING = "full"
+# Decided by the tuning phase (NOTES.md #6, #17, 2026-09-26): partial fine-tuning, because it was
+# clearly better and far more stable for MobileNetV3-Small over three seeds and never worse for the
+# other two, and one recipe applies to all three; the class-weighted loss stays, because leaving it
+# out made no detectable difference.
+DEFAULT_FINE_TUNING = "partial"
 DEFAULT_WEIGHTED_LOSS = True
 
 
@@ -84,10 +87,12 @@ class RunConfig:
     fine_tuning: str = DEFAULT_FINE_TUNING
     weighted_loss: bool = DEFAULT_WEIGHTED_LOSS
     seed: int = SEED
+    # None keeps torchvision's own BatchNorm momentum. Set only by the T16 diagnostic (NOTES.md #26).
+    bn_momentum: float | None = None
 
     # __post_init__ runs straight after the generated __init__ has filled in the fields.
     def __post_init__(self):
-        """Raise ValueError if any field names a model, split, regime or mode that does not exist."""
+        """Raise ValueError for an unknown model, split, regime or mode, or an out-of-range momentum."""
         allowed = {
             "model": ARCHITECTURES, "split": TRAIN_SPLITS,
             "augmentation": REGIMES, "fine_tuning": FINE_TUNING,
@@ -96,6 +101,9 @@ class RunConfig:
             value = getattr(self, field)
             if value not in options:
                 raise ValueError(f"{self.run_id}: unknown {field} {value!r}, expected one of {list(options)}")
+        # None is the default and means "leave torchvision's value", so only a set value is checked.
+        if self.bn_momentum is not None and not 0 < self.bn_momentum <= 1:
+            raise ValueError(f"{self.run_id}: bn_momentum must be in (0, 1], got {self.bn_momentum}")
 
 
 def build_experiments():
@@ -124,6 +132,17 @@ TUNING_RUNS = (
     RunConfig("T07", "mobilenet_v3_small", "train_20", "none", "full", False),
     RunConfig("T08", "resnet18", "train_20", "none", "full", False),
     RunConfig("T09", "efficientnet_b0", "train_20", "none", "full", False),
+    # Spot-check of the depth decision under strong augmentation (NOTES.md #6): full, then partial.
+    RunConfig("T10", "mobilenet_v3_small", "train_20", "strong", "full", True),
+    RunConfig("T11", "resnet18", "train_20", "strong", "full", True),
+    RunConfig("T12", "efficientnet_b0", "train_20", "strong", "full", True),
+    RunConfig("T13", "mobilenet_v3_small", "train_20", "strong", "partial", True),
+    RunConfig("T14", "resnet18", "train_20", "strong", "partial", True),
+    RunConfig("T15", "efficientnet_b0", "train_20", "strong", "partial", True),
+    # A diagnostic, not a recipe candidate: T01 with the BatchNorm momentum ResNet18 and
+    # EfficientNet-B0 already use (NOTES.md #26). bn_momentum= names the field, since it comes
+    # after seed and the rows above leave seed at its default.
+    RunConfig("T16", "mobilenet_v3_small", "train_20", "none", "full", True, bn_momentum=0.1),
 )
 
 EXPERIMENTS = build_experiments()
@@ -137,7 +156,7 @@ def get_config(run_id, seed=None):
     Raises ValueError for an ID that does not exist.
     """
     if run_id not in RUNS:
-        raise ValueError(f"unknown run ID {run_id!r}, expected E01-E27 or T01-T09")
+        raise ValueError(f"unknown run ID {run_id!r}, expected E01-E27 or T01-T16")
     config = RUNS[run_id]
     # A frozen dataclass cannot be edited, so replace() returns a copy with the seed changed.
     return config if seed is None else replace(config, seed=seed)
@@ -182,8 +201,10 @@ def check_against_log():
 def main():
     """Print every run, then check the table against experiment_log.md and the ID lookup."""
     for config in RUNS.values():
+        # Printed only when set, so the usual rows stay short and T16 stands out.
+        momentum = f" bn_momentum={config.bn_momentum}" if config.bn_momentum is not None else ""
         print(f"  {config.run_id}  {config.model:18s} {config.split:9s} {config.augmentation:6s} "
-              f"{config.fine_tuning:7s} weighted={config.weighted_loss}")
+              f"{config.fine_tuning:7s} weighted={config.weighted_loss}{momentum}")
     print(f"recipe: {asdict(RECIPE)}")
     print(f"experiments: {len(EXPERIMENTS)}, tuning runs: {len(TUNING_RUNS)}")
     print(f"E-IDs differing from experiment_log.md: {check_against_log() or 'none'}")

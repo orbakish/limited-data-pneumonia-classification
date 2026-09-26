@@ -16,7 +16,7 @@ normal-vision separation 25.8 (both above their floors), and every colour clears
 against white paper.
 
 Every figure stores its title inside the PNG, so `python -m src.figures --audit` can confirm
-that all 81 report figures carry the label their config says they should, instead of anyone
+that every per-run figure carries the label their config says they should, instead of anyone
 checking by eye.
 
     from src.figures import confusion_figure, curves_figure
@@ -318,9 +318,9 @@ def main():
     print(f"  audit finds it correctly labelled: {run_title(config) in (written or '')}")
     rows, problems = audit(args.output_root)
     # Only the two figures drawn above exist, so everything else is expected to be missing -
-    # which is also a check that the audit counts all 27 experiments and 9 tuning runs.
+    # which is also a check that the audit counts every experiment and every tuning run.
     print(f"  audit: {len(rows) - len(problems)} of {len(rows)} present "
-          f"(expected 2 of {3 * 27 + 9})")
+          f"(expected 2 of {3 * len(EXPERIMENTS) + len(TUNING_RUNS)})")
 
 
 if __name__ == "__main__":
