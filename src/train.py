@@ -56,7 +56,17 @@ def run_directory(config, root=None):
 
 
 def get_device():
-    """Return the torch device to train on, plus a readable name for it."""
+    """Return the torch device to train on, plus a readable name for it.
+
+    Also fixes cuDNN's settings for everything that follows, so a rerun that only evaluates -
+    training already finished - uses the same settings as a run that trained first.
+    """
+    # Deterministic cuDNN convolutions, and no benchmarking (which picks algorithms by timing
+    # them, so the choice can differ between runs). PyTorch still lists AdaptiveAvgPool2d's GPU
+    # backward pass as non-deterministic, yet two same-seed T01 runs on a T4 were bit-identical
+    # (NOTES.md) - measured for MobileNetV3-Small only.
+    torch.backends.cudnn.deterministic = True
+    torch.backends.cudnn.benchmark = False
     if torch.cuda.is_available():
         return torch.device("cuda"), torch.cuda.get_device_name(0)
     return torch.device("cpu"), "CPU"
@@ -174,13 +184,8 @@ def fit(config, recipe, run_dir, logger, num_workers, resume_every=1):
     larger value trades that cost against how much work a disconnect throws away.
     """
     history_path, last_path, best_path = (run_dir / name for name in ("history.json", "last.pt", "best.pt"))
+    # get_device also switches cuDNN to deterministic mode.
     device, device_name = get_device()
-    # Deterministic cuDNN convolutions, and no benchmarking (which picks algorithms by timing
-    # them, so the choice can differ between runs). PyTorch still lists AdaptiveAvgPool2d's GPU
-    # backward pass as non-deterministic, yet two same-seed T01 runs on a T4 were bit-identical
-    # (NOTES.md) - measured for MobileNetV3-Small only.
-    torch.backends.cudnn.deterministic = True
-    torch.backends.cudnn.benchmark = False
 
     # Seeded before the model is built, so the new head's random initial weights are reproducible.
     seed_everything(config.seed)
