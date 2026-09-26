@@ -21,7 +21,8 @@ What the three blocks decide:
 
 * **T01-T03** - the baseline, one per architecture: full fine-tuning, class-weighted loss.
 * **T04-T06** - partial fine-tuning against that baseline (NOTES.md question #6). Judged on
-  validation ROC-AUC, with balanced accuracy as the tiebreak.
+  **balanced accuracy**, with ROC-AUC secondary: T01's ROC-AUC saturated inside its own
+  interval, so a ROC-AUC gap here would almost always be a tie (changed 2026-09-25).
 * **T07-T09** - no class weighting against that baseline (NOTES.md question #17). Judged on
   **balanced accuracy**, because weighting mostly moves the decision threshold and ROC-AUC is
   largely blind to that; ROC-AUC is the secondary check.
