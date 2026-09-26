@@ -19,9 +19,10 @@ Each run writes to <output root>/checkpoints/<run_id>_seed<seed>/:
 The output root is $PNEUMONIA_OUTPUT_ROOT (the Colab notebook points it at Drive), otherwise the
 repo itself. Each epoch's randomness - shuffle order, augmentation, dropout - is seeded from
 (seed, epoch) rather than carried over from the epoch before, so a resume needs no saved
-generator state. On CPU a resumed run therefore reproduces an uninterrupted one exactly; on a
-GPU, any epoch replayed after the resume point carries cuDNN's non-determinism, so it matches
-to within the rerun difference measured on Colab rather than bit for bit.
+generator state. On CPU a resumed run therefore reproduces an uninterrupted one exactly. On a GPU
+a replayed epoch matches as closely as two separate runs do, and two same-seed T01 runs
+(MobileNetV3-Small on a T4) came out bit-identical (NOTES.md); ResNet18 and EfficientNet-B0 have
+not been measured.
 
     python -m src.train --id T01
     python -m src.train --id T01 --max-epochs 2 --output-root C:/temp/smoke   # smoke test
@@ -45,7 +46,7 @@ from src.augment import build_transform
 from src.config import RECIPE, get_config
 from src.data import build_dataloader
 from src.evaluate import predict, scores
-from src.models import build_model, set_fine_tuning, split_parameters, train_mode
+from src.models import build_model, set_batchnorm_momentum, set_fine_tuning, split_parameters, train_mode
 from src.paths import OUTPUT_ROOT_ENV, output_root
 
 
@@ -54,8 +55,29 @@ def run_directory(config, root=None):
     return (root or output_root()) / "checkpoints" / f"{config.run_id}_seed{config.seed}"
 
 
+def load_best(config, run_dir, device):
+    """Return the model with this run's best checkpoint loaded, ready to predict."""
+    # map_location puts the tensors on this machine's device, whatever device saved them.
+    checkpoint = torch.load(run_dir / "best.pt", map_location=device)
+    # pretrained=False: the checkpoint replaces every weight, so downloading the ImageNet ones
+    # first would be wasted work.
+    model = build_model(config.model, pretrained=False).to(device)
+    model.load_state_dict(checkpoint["model"])
+    return model
+
+
 def get_device():
-    """Return the torch device to train on, plus a readable name for it."""
+    """Return the torch device to train on, plus a readable name for it.
+
+    Also fixes cuDNN's settings for everything that follows, so a rerun that only evaluates -
+    training already finished - uses the same settings as a run that trained first.
+    """
+    # Deterministic cuDNN convolutions, and no benchmarking (which picks algorithms by timing
+    # them, so the choice can differ between runs). PyTorch still lists AdaptiveAvgPool2d's GPU
+    # backward pass as non-deterministic, yet two same-seed T01 runs on a T4 were bit-identical
+    # (NOTES.md) - measured for MobileNetV3-Small only.
+    torch.backends.cudnn.deterministic = True
+    torch.backends.cudnn.benchmark = False
     if torch.cuda.is_available():
         return torch.device("cuda"), torch.cuda.get_device_name(0)
     return torch.device("cpu"), "CPU"
@@ -157,6 +179,11 @@ def log_header(logger, config, recipe, device_name, model, train_labels, val_siz
     # The worker count belongs in the record: with workers, augmentation draws come from each
     # worker's own generator, so a resumed run with a different count replays different images.
     logger.info(f"parameters: {trainable:,} trainable of {total:,}, dataloader workers {num_workers}")
+    # Read back from the layers rather than taken from the config, so the log proves what applied.
+    # A set comprehension {...} keeps each distinct value once; sorted() turns it into a list.
+    momenta = sorted({module.momentum for module in model.modules()
+                      if isinstance(module, nn.modules.batchnorm._BatchNorm)})
+    logger.info(f"BatchNorm momentum: {', '.join(str(value) for value in momenta)}")
 
 
 def fit(config, recipe, run_dir, logger, num_workers, resume_every=1):
@@ -168,16 +195,15 @@ def fit(config, recipe, run_dir, logger, num_workers, resume_every=1):
     larger value trades that cost against how much work a disconnect throws away.
     """
     history_path, last_path, best_path = (run_dir / name for name in ("history.json", "last.pt", "best.pt"))
+    # get_device also switches cuDNN to deterministic mode.
     device, device_name = get_device()
-    # Deterministic cuDNN convolutions, and no benchmarking (which picks algorithms by timing
-    # them, so the choice can differ between runs). AdaptiveAvgPool2d's backward pass on the
-    # GPU stays non-deterministic regardless, so reruns are close rather than bit-identical.
-    torch.backends.cudnn.deterministic = True
-    torch.backends.cudnn.benchmark = False
 
     # Seeded before the model is built, so the new head's random initial weights are reproducible.
     seed_everything(config.seed)
     model = build_model(config.model).to(device)
+    if config.bn_momentum is not None:
+        # Only the T16 diagnostic sets this: it changes what evaluation sees, not how the weights train.
+        set_batchnorm_momentum(model, config.bn_momentum)
     set_fine_tuning(model, config.model, config.fine_tuning)
     head, backbone = split_parameters(model, config.model)
     # Two parameter groups, each with its own learning rate; weight decay applies to both.
@@ -321,7 +347,7 @@ def train(config, recipe=RECIPE, root=None, num_workers=0, resume_every=1, force
 def parse_args():
     """Parse the command-line arguments and return them as a Namespace."""
     parser = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
-    parser.add_argument("--id", required=True, help="run ID, E01-E27 or T01-T09")
+    parser.add_argument("--id", required=True, help="run ID, E01-E27 or T01-T16")
     parser.add_argument("--seed", type=int, default=None, help="override the run's seed")
     parser.add_argument("--max-epochs", type=int, default=None, help="override RECIPE.max_epochs, for smoke tests")
     parser.add_argument("--output-root", type=Path, default=None, help=f"default: ${OUTPUT_ROOT_ENV}, else the repo")

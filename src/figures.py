@@ -16,7 +16,7 @@ normal-vision separation 25.8 (both above their floors), and every colour clears
 against white paper.
 
 Every figure stores its title inside the PNG, so `python -m src.figures --audit` can confirm
-that all 81 report figures carry the label their config says they should, instead of anyone
+that every per-run figure carries the label their config says they should, instead of anyone
 checking by eye.
 
     from src.figures import confusion_figure, curves_figure
@@ -69,11 +69,9 @@ def save_figure(figure, path, title):
     return path
 
 
-def confusion_figure(counts, title, path):
-    """Draw the confusion matrix as a labelled 2x2 grid of counts."""
+def draw_confusion(axes, counts, label):
+    """Draw one confusion matrix as a labelled 2x2 grid of counts onto the given axes."""
     grid = np.array([[counts["tn"], counts["fp"]], [counts["fn"], counts["tp"]]])
-    figure = Figure(figsize=(5.0, 4.6), layout="constrained")
-    axes = figure.add_subplot()
     # A single hue, light to dark: the cell value is a magnitude, not a category.
     axes.imshow(grid, cmap="Blues")
     axes.set_xticks([0, 1], ["predicted\nNORMAL", "predicted\nPNEUMONIA"], fontsize=8)
@@ -84,8 +82,25 @@ def confusion_figure(counts, title, path):
             # Dark cells need light text and light cells dark text, or half the numbers vanish.
             colour = "white" if count > grid.max() / 2 else "#1a1a19"
             axes.text(column, row, f"{count}", ha="center", va="center", color=colour, fontsize=15)
+    axes.set_title(label, fontsize=8)
     # The two error types are what the report argues about, so name them on the figure itself.
     axes.set_xlabel("top right: false alarms      bottom left: missed pneumonia", fontsize=7)
+
+
+def confusion_figure(counts, title, path, tuned_counts=None, threshold=None):
+    """Draw the confusion matrix at 0.5 and, when given, at the tuned threshold beside it.
+
+    One file per run either way, so the per-run figure count the audit expects is unchanged.
+    threshold is the tuned threshold as a PNEUMONIA probability, shown in its panel's label.
+    """
+    panels = [(counts, "threshold 0.5")]
+    if tuned_counts is not None:
+        panels.append((tuned_counts, f"threshold {threshold:.3f}, chosen on validation"))
+    figure = Figure(figsize=(5.0 * len(panels), 4.6), layout="constrained")
+    # squeeze=False keeps subplots() returning a 2D grid even for a single panel, so [0] always
+    # gives the row of axes.
+    for axes, (panel_counts, label) in zip(figure.subplots(1, len(panels), squeeze=False)[0], panels):
+        draw_confusion(axes, panel_counts, label)
     titled(figure, title, size=8)
     return save_figure(figure, path, title)
 
@@ -206,14 +221,24 @@ def stability_gap_figure(rows, title, path):
     return save_figure(figure, path, title)
 
 
+def f1_figure(rows, directory):
+    """Draw test F1 at the validation-chosen threshold, or at 0.5 if any run lacks a tuned value.
+
+    One threshold for the whole figure, so a line never mixes the two (NOTES.md #27).
+    """
+    tuned = bool(rows) and all(row.get("f1_tuned") is not None for row in rows)
+    metric, where = ("f1_tuned", "validation-chosen threshold") if tuned else ("f1", "0.5 threshold")
+    return comparison_figure(rows, metric, f"Test F1 at the {where} by data size and augmentation regime",
+                             directory / "summary_f1.png", f"test F1, {where} (95% CI)")
+
+
 def report_figures(rows, root=None):
     """Draw every cross-experiment figure from the metrics files and return their paths."""
     directory = figures_directory(root)
     drawn = [
         comparison_figure(rows, "roc_auc", "Test ROC-AUC by data size and augmentation regime",
                           directory / "summary_roc_auc.png", "test ROC-AUC (95% CI)"),
-        comparison_figure(rows, "f1", "Test F1 by data size and augmentation regime",
-                          directory / "summary_f1.png", "test F1 (95% CI)"),
+        f1_figure(rows, directory),
     ]
     # Stability figures need src/stability.py to have filled those fields in.
     if any(row.get("gradcam_stability_out_of_family") is not None for row in rows):
@@ -279,6 +304,7 @@ def synthetic_rows():
             "data_size": LOG_LABELS[config.split], "augmentation": LOG_LABELS[config.augmentation],
             "roc_auc": value, "roc_auc_ci_low": value - 0.012, "roc_auc_ci_high": min(1.0, value + 0.012),
             "f1": value - 0.03, "f1_ci_low": value - 0.045, "f1_ci_high": value - 0.015,
+            "f1_tuned": value - 0.02, "f1_tuned_ci_low": value - 0.035, "f1_tuned_ci_high": value - 0.005,
             "gradcam_stability_out_of_family": stability_out,
             "gradcam_stability_in_family": stability_out + 0.06 * (config.augmentation == "strong"),
         })
@@ -306,8 +332,9 @@ def main():
     directory = figures_directory(args.output_root)
     config = EXPERIMENTS["E01"]
     counts = {"tn": 180, "fp": 54, "fn": 12, "tp": 378}
+    tuned_counts = {"tn": 205, "fp": 29, "fn": 25, "tp": 365}
     confusion_figure(counts, f"{run_title(config)} - test confusion matrix",
-                     directory / "E01_confusion_matrix.png")
+                     directory / "E01_confusion_matrix.png", tuned_counts, 0.873)
     history = [{"epoch": epoch, "train_loss": 0.6 / epoch, "val_loss": 0.4 + 0.05 * epoch,
                 "roc_auc": 0.95 + 0.004 * min(epoch, 4), "balanced_accuracy": 0.80 + 0.01 * epoch}
                for epoch in range(1, 9)]
@@ -318,9 +345,9 @@ def main():
     print(f"  audit finds it correctly labelled: {run_title(config) in (written or '')}")
     rows, problems = audit(args.output_root)
     # Only the two figures drawn above exist, so everything else is expected to be missing -
-    # which is also a check that the audit counts all 27 experiments and 9 tuning runs.
+    # which is also a check that the audit counts every experiment and every tuning run.
     print(f"  audit: {len(rows) - len(problems)} of {len(rows)} present "
-          f"(expected 2 of {3 * 27 + 9})")
+          f"(expected 2 of {3 * len(EXPERIMENTS) + len(TUNING_RUNS)})")
 
 
 if __name__ == "__main__":
