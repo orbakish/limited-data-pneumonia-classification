@@ -81,3 +81,7 @@ Explanation stability is measured on a fixed class-balanced subset of test image
 
 Healthcare, Computer Vision
 
+## Documentation
+
+See [`docs/architecture.md`](docs/architecture.md) for the project pipeline and architecture overview.
+
