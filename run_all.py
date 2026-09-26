@@ -15,6 +15,7 @@ by history.json saying the run finished. Both live under $PNEUMONIA_OUTPUT_ROOT.
 
 import argparse
 import json
+import traceback
 from pathlib import Path
 
 from run_experiment import run
@@ -61,15 +62,26 @@ def main():
     """Run every config in order, skipping the ones that already have results."""
     args = parse_args()
     run_ids = [config.run_id for config in TUNING_RUNS] if args.tuning else list(EXPERIMENTS)
+    failed = []
     for run_id in run_ids:
         if not args.force and already_done(run_id, args.seed, args.output_root):
             print(f"{run_id}: already done, skipping")
             continue
         print(f"{run_id}: starting")
-        # force reaches train() as well: without it a finished run would be skipped there
-        # even though already_done was bypassed here.
-        run(run_id, args.seed, args.workers, args.output_root, resume_every=args.resume_every,
-            force=args.force)
+        try:
+            # force reaches train() as well: without it a finished run would be skipped there
+            # even though already_done was bypassed here.
+            run(run_id, args.seed, args.workers, args.output_root, resume_every=args.resume_every,
+                force=args.force)
+        # One failure - a Drive hiccup, a GPU error - must not stop a sweep that runs for hours
+        # unattended. Exception excludes KeyboardInterrupt, so stopping the cell still stops the
+        # sweep. The failed run has no results file, so rerunning this command retries it.
+        except Exception:
+            traceback.print_exc()
+            print(f"{run_id}: FAILED - continuing with the next run")
+            failed.append(run_id)
+    if failed:
+        print(f"{len(failed)} run(s) failed: {', '.join(failed)} - rerun the same command to retry them")
 
 
 if __name__ == "__main__":

@@ -7,11 +7,12 @@ the train/validation boundary and silently inflate every validation score.
 
 Not a script; import it:
 
-    from src.paths import data_root, group_key, list_images, output_root, patient_key
+    from src.paths import code_version, data_root, group_key, list_images, output_root, patient_key
 """
 
 import os
 import re
+import subprocess
 from pathlib import Path
 
 # Filename patterns. PNEUMONIA: person<N>_<bacteria|virus>_<M>[_<K>]. NORMAL: [NORMAL2-]IM-<A>-<B>[-<C>].
@@ -54,6 +55,32 @@ def output_root():
     """Return the directory runs write into: $PNEUMONIA_OUTPUT_ROOT if set, otherwise the repo."""
     override = os.environ.get(OUTPUT_ROOT_ENV)
     return Path(override) if override else DEFAULT_OUTPUT_ROOT
+
+
+def code_version():
+    """Return the code's short commit hash, "<hash>+modified" if tracked files differ from it, or "unknown".
+
+    Recorded with every run, so each result can be traced to the exact code that produced it - the
+    sweep spans several Colab sessions and an unmerged branch. The program asks git itself, in the
+    repo this file belongs to; without git, or outside a repo, the answer is "unknown" rather than
+    an error, because a missing version must never stop a run.
+    """
+    def ask(*arguments):
+        """Run one git command in the repo and return its output, stripped."""
+        # capture_output keeps git's output out of the terminal; check=True raises on a non-zero
+        # exit; the timeout stops a hung git from stalling a run.
+        return subprocess.run(["git", *arguments], cwd=DEFAULT_OUTPUT_ROOT, capture_output=True, text=True,
+                              timeout=10, check=True).stdout.strip()
+
+    try:
+        commit = ask("rev-parse", "--short", "HEAD")
+        # --porcelain prints one line per changed file; --untracked-files=no ignores new files, so
+        # only edits to tracked code count.
+        changed = ask("status", "--porcelain", "--untracked-files=no")
+    # OSError covers a missing git; SubprocessError a failed or timed-out command.
+    except (OSError, subprocess.SubprocessError):
+        return "unknown"
+    return f"{commit}+modified" if changed else commit
 
 
 def list_images(folder):

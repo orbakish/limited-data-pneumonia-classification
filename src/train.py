@@ -47,7 +47,7 @@ from src.config import RECIPE, get_config
 from src.data import build_dataloader
 from src.evaluate import predict, scores
 from src.models import build_model, set_batchnorm_momentum, set_fine_tuning, split_parameters, train_mode
-from src.paths import OUTPUT_ROOT_ENV, output_root
+from src.paths import OUTPUT_ROOT_ENV, code_version, output_root
 
 
 def run_directory(config, root=None):
@@ -173,6 +173,7 @@ def log_header(logger, config, recipe, device_name, model, train_labels, val_siz
     logger.info(f"recipe: {asdict(recipe)}")
     logger.info(f"device {device_name}, torch {torch.__version__}, torchvision {torchvision.__version__}, "
                 f"cudnn deterministic {torch.backends.cudnn.deterministic}")
+    logger.info(f"code {code_version()}")
     weight_text = f"class weights NORMAL {weights[0]:.2f} PNEUMONIA {weights[1]:.2f}" if weights is not None else "unweighted loss"
     logger.info(f"data: {config.split} {len(train_labels)} images (NORMAL {normal}, PNEUMONIA {pneumonia}), "
                 f"val {val_size} images, {weight_text}")

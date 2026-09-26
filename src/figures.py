@@ -25,6 +25,7 @@ checking by eye.
 """
 
 import argparse
+import tempfile
 import textwrap
 from pathlib import Path
 
@@ -34,7 +35,9 @@ from PIL import Image
 
 from src.config import (AUGMENTATIONS, EXPERIMENTS, LOG_LABELS, MODELS, RECIPE, TRAIN_SPLITS,
                         TUNING_RUNS, output_stem, run_title)
+from src.evaluate import comparison_table, load_metrics
 from src.paths import output_root
+from src.splits import SEED
 
 # One hue per augmentation regime, in this order, everywhere in the report. Validated with the
 # six checks (see the module docstring); do not swap in an untested colour.
@@ -325,12 +328,29 @@ def synthetic_rows():
     return rows
 
 
+def report(root=None, seed=SEED):
+    """Draw the summary figures and write results/summary_table.md from one seed's results files.
+
+    Only one seed at a time: a second seed's files would otherwise add duplicate rows. Returns
+    the rows used, so the caller can say how much of the sweep they cover.
+    """
+    rows = [row for row in load_metrics(root) if row.get("seed", SEED) == seed and row["experiment_id"] in EXPERIMENTS]
+    if rows:
+        report_figures(rows, root)
+        table = (root or output_root()) / "results" / "summary_table.md"
+        table.write_text(comparison_table(rows) + "\n", encoding="utf-8")
+    return rows
+
+
 def main():
-    """Self-check: draw every figure from synthetic data, then audit the titles."""
+    """Self-check in a temporary folder, or audit / report the real results under the output root."""
     parser = argparse.ArgumentParser(description=__doc__,
                                      formatter_class=argparse.RawDescriptionHelpFormatter)
     parser.add_argument("--audit", action="store_true", help="check the figures under the output root")
-    parser.add_argument("--output-root", type=Path, default=None, help="where results/figures lives")
+    parser.add_argument("--report", action="store_true",
+                        help="draw the summary figures and table from the results files under the output root")
+    parser.add_argument("--seed", type=int, default=SEED, help=f"which seed --report uses (default {SEED})")
+    parser.add_argument("--output-root", type=Path, default=None, help="where results/ lives")
     args = parser.parse_args()
 
     if args.audit:
@@ -339,11 +359,23 @@ def main():
             print(f"  {row['figure']:34s} {row['state']}")
         print(f"{len(rows) - len(problems)} of {len(rows)} figures present and correctly titled")
         return
+    if args.report:
+        rows = report(args.output_root, args.seed)
+        where = (args.output_root or output_root()) / "results"
+        print(f"{len(rows)} of {len(EXPERIMENTS)} experiments found for seed {args.seed}; "
+              f"summary figures and summary_table.md written under {where}" if rows else
+              f"no results files for seed {args.seed} under {where}")
+        return
 
+    # The self-check draws synthetic figures, so it must never write into the real output root: on
+    # Colab that is Drive, and it would overwrite real results with fake ones. A fresh temporary
+    # folder, kept so the figures can be looked at, and audited there.
+    scratch = Path(tempfile.mkdtemp(prefix="figures-self-check-"))
+    print(f"  self-check figures go to {scratch}")
     rows = synthetic_rows()
-    drawn = report_figures(rows, args.output_root)
+    drawn = report_figures(rows, scratch)
     print(f"  report figures: {[path.name for path in drawn]}")
-    directory = figures_directory(args.output_root)
+    directory = figures_directory(scratch)
     config = EXPERIMENTS["E01"]
     counts = {"tn": 180, "fp": 54, "fn": 12, "tp": 378}
     tuned_counts = {"tn": 205, "fp": 29, "fn": 25, "tp": 365}
@@ -357,7 +389,7 @@ def main():
     written = read_title(directory / "E01_confusion_matrix.png")
     print(f"  title stored in the PNG: {written!r}")
     print(f"  audit finds it correctly labelled: {run_title(config) in (written or '')}")
-    rows, problems = audit(args.output_root)
+    rows, problems = audit(scratch)
     # Only the two figures drawn above exist, so everything else is expected to be missing -
     # which is also a check that the audit counts every experiment and every tuning run.
     print(f"  audit: {len(rows) - len(problems)} of {len(rows)} present "
