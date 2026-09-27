@@ -82,10 +82,10 @@ They also introduce a **weighted error score** for the OCT referral task, to ref
 missed urgent case is worse than a false alarm: an "urgent referral" (CNV/DME) misclassified
 as *normal* gets a penalty of 4, misclassified as *drusen* gets a penalty of 2, and any other
 wrong answer gets a penalty of 1. This isn't something our project needs to replicate (our
-task is a plain binary pneumonia/normal classification with standard
-accuracy/precision/recall/F1, per `results/README.md`), but it's a useful pattern to be aware
-of if the report ever wants to argue that not all misclassifications are equally costly in a
-medical setting.
+task is a plain binary pneumonia/normal classification evaluated with standard classification
+metrics including accuracy, precision, recall, specificity, F1, balanced accuracy, and ROC-AUC),
+but it's a useful pattern to be aware of if the report ever wants to argue that not all
+misclassifications are equally costly in a medical setting.
 
 ### Interpretability method: occlusion testing (not Grad-CAM)
 
@@ -185,8 +185,8 @@ The paper also proposes combining Grad-CAM with Guided Backpropagation for highe
 visualizations: elementwise-multiply the (upsampled) Grad-CAM heatmap with a Guided
 Backpropagation map of the same image. This gives a result that's both high-resolution and
 class-discriminative. Our project's plan only calls for Grad-CAM itself (used for the
-stability-cosine-similarity metric), not the Guided variant, but it's worth knowing the name
-in case it comes up in report/report review as "why not Guided Grad-CAM."
+explanation-stability analysis with Pearson correlation), not the Guided variant, but it's worth
+knowing the name in case it comes up in report/report review as "why not Guided Grad-CAM."
 
 ### Counterfactual explanations (Eq. 12, likely not needed, but relevant vocabulary)
 
