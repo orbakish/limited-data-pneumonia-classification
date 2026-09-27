@@ -33,10 +33,8 @@ from pathlib import Path
 import torch
 import torchvision
 
-from src.augment import build_transform
 from src.config import RECIPE, get_config, output_stem, run_title
-from src.data import build_dataloader
-from src.evaluate import (choose_threshold, metrics_payload, predict, results_directory, save_metrics,
+from src.evaluate import (choose_threshold, metrics_payload, results_directory, save_metrics, score_split,
                           write_validation_metrics)
 from src.figures import confusion_figure, curves_figure, figures_directory
 from src.gradcam import examples_figure
@@ -64,15 +62,6 @@ def parse_args():
                         help="redo a finished experiment's evaluation from its best checkpoint, without retraining")
     parser.add_argument("--output-root", type=Path, default=None, help=f"default: ${OUTPUT_ROOT_ENV}, else the repo")
     return parser.parse_args()
-
-
-def score_split(model, split, config, workers, recipe, device):
-    """Run the model over one evaluation split and return (logits, labels, image paths)."""
-    # Evaluation uses preprocessing only - train=False - whatever regime the run trained with.
-    loader = build_dataloader(split, recipe.batch_size, build_transform(config.augmentation, train=False),
-                              num_workers=workers)
-    logits, labels = predict(model, loader, device)
-    return logits, labels, loader.dataset.paths
 
 
 def evaluate_on_test(config, run_dir, root, workers, recipe):
