@@ -8,9 +8,9 @@
 4. MobileNetV3-Small, ResNet18, and EfficientNet-B0 training
 5. Limited-data experiments using 20%, 50%, and 100% of the training set
 6. Implementation of three augmentation regimes: none, mild, and strong
-7. Classification evaluation using accuracy, precision, recall, F1-score, and confusion matrices
+7. Classification evaluation using accuracy, precision, recall, specificity, F1-score, balanced accuracy, ROC-AUC, confusion matrices, and 95% confidence intervals
 8. Grad-CAM generation
-9. Grad-CAM explanation stability analysis using cosine similarity
+9. Grad-CAM explanation stability analysis using Pearson correlation
 10. Experimental result comparison and visualization
 11. Final report and presentation
 
