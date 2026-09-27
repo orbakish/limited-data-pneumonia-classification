@@ -231,11 +231,13 @@ def tuned_fields(logits, labels, groups, threshold, samples, seed):
     return fields
 
 
-def metrics_payload(config, logits, labels, paths, samples=BOOTSTRAP_SAMPLES, threshold=None):
+def metrics_payload(config, logits, labels, paths, samples=BOOTSTRAP_SAMPLES, threshold=None, stability=None):
     """Build the full results dict for one run, in the schema NOTES.md records for question #13.
 
     Every unsuffixed metric is at the default threshold (0.5). Given a tuned threshold, the
     payload also carries the same metrics at that threshold, keyed *_tuned (NOTES.md #27).
+    stability is the dict src/stability.py returns for an experiment; without it the two
+    stability fields stay null.
     """
     groups = patient_groups(paths)
     intervals, skipped = bootstrap_intervals(logits, labels, groups, samples, seed=config.seed)
@@ -256,10 +258,9 @@ def metrics_payload(config, logits, labels, paths, samples=BOOTSTRAP_SAMPLES, th
         **scores(logits, labels),
         **intervals,
         "confusion_matrix": confusion_counts(logits, labels),
-        # Filled in by src/stability.py (workplan section 7); null until then, so the schema is
-        # complete from the first run and Or's results table has the columns it expects.
-        "gradcam_stability_in_family": None,
-        "gradcam_stability_out_of_family": None,
+        # Filled in by src/stability.py for an experiment (NOTES.md #7); null otherwise, so the
+        # schema is complete in every file and Or's results table has the columns it expects.
+        **(stability or {"gradcam_stability_in_family": None, "gradcam_stability_out_of_family": None}),
         "bootstrap": {"samples": samples, "skipped": skipped, "seed": config.seed,
                       "unit": "patient group", "confidence": CONFIDENCE},
     }
@@ -275,11 +276,24 @@ def results_directory(root=None, kind="metrics"):
     return directory
 
 
-def write_metrics(config, logits, labels, paths, root=None, samples=BOOTSTRAP_SAMPLES, threshold=None):
-    """Write results/metrics/<ID>_metrics.json for one run and return the payload."""
-    payload = metrics_payload(config, logits, labels, paths, samples, threshold)
+def save_metrics(payload, config, root=None):
+    """Write a results payload to results/metrics/<ID>_metrics.json and return the path.
+
+    run_all.py counts a run as finished once this file exists, so it must never exist half
+    written: the JSON goes to a temporary file first, and Path.replace renames it in one step.
+    """
     path = results_directory(root) / f"{output_stem(config)}_metrics.json"
-    path.write_text(json.dumps(payload, indent=2), encoding="utf-8")
+    temporary = path.with_name(path.name + ".tmp")
+    temporary.write_text(json.dumps(payload, indent=2), encoding="utf-8")
+    temporary.replace(path)
+    return path
+
+
+def write_metrics(config, logits, labels, paths, root=None, samples=BOOTSTRAP_SAMPLES, threshold=None,
+                  stability=None):
+    """Build and save results/metrics/<ID>_metrics.json for one run and return the payload."""
+    payload = metrics_payload(config, logits, labels, paths, samples, threshold, stability)
+    save_metrics(payload, config, root)
     return payload
 
 
@@ -320,8 +334,8 @@ def comparison_table(rows):
         return "-" if value is None else f"{value:.3f}"
 
     header = ("| ID | Model | Data | Augmentation | ROC-AUC (95% CI) | Threshold | Balanced acc. | F1 | "
-              "Recall | Specificity | Balanced acc. @0.5 | Stability (out) |")
-    lines = [header, "|" + "---|" * 12]
+              "Recall | Specificity | Balanced acc. @0.5 | Stability (in) | Stability (out) | Gap |")
+    lines = [header, "|" + "---|" * 14]
     for row in rows:
         interval = ""
         if row.get("roc_auc_ci_low") is not None:
@@ -331,7 +345,8 @@ def comparison_table(rows):
             f"| {row['roc_auc']:.3f}{interval} | {cell(row.get('threshold'))} "
             f"| {cell(row.get('balanced_accuracy_tuned'))} | {cell(row.get('f1_tuned'))} "
             f"| {cell(row.get('recall_tuned'))} | {cell(row.get('specificity_tuned'))} "
-            f"| {cell(row['balanced_accuracy'])} | {cell(row.get('gradcam_stability_out_of_family'))} |")
+            f"| {cell(row['balanced_accuracy'])} | {cell(row.get('gradcam_stability_in_family'))} "
+            f"| {cell(row.get('gradcam_stability_out_of_family'))} | {cell(row.get('gradcam_stability_gap'))} |")
     return "\n".join(lines)
 
 

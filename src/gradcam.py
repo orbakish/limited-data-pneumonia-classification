@@ -109,11 +109,12 @@ def upsample(maps, size=IMAGE_SIZE):
                          align_corners=False).squeeze(1)
 
 
-def examples_figure(images, maps, empty, true, predicted, title, path):
+def examples_figure(images, maps, empty, true, predicted, title, path, explained="predicted class"):
     """Draw each image above its Grad-CAM overlay, one column per image, and save it with its title.
 
     Each overlay is scaled to its own maximum, which is printed under it, so a weak map still
     shows where it points - and the number keeps the scale honest. An empty map is labelled so.
+    explained names the class the maps explain, printed under the figure.
     """
     images, heat = images.cpu(), upsample(maps.cpu())
     figure = Figure(figsize=(2.1 * len(images), 4.6), layout="constrained")
@@ -136,6 +137,7 @@ def examples_figure(images, maps, empty, true, predicted, title, path):
         for axes in (top, bottom):
             axes.set_xticks([])
             axes.set_yticks([])
+    figure.supxlabel(f"maps explain the {explained}", fontsize=7)
     titled(figure, title, size=8)
     return save_figure(figure, path, title)
 

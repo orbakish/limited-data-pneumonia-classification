@@ -10,7 +10,8 @@ own - which matters because Colab sessions drop mid-sweep.
 
 An E-run trains, then chooses a decision threshold on validation with its best checkpoint
 (NOTES.md #27), evaluates that checkpoint on the untouched official test split at 0.5 and at the
-chosen threshold, and writes results/metrics/E##_metrics.json plus its figures. A T-run scores its best checkpoint on
+chosen threshold, measures Grad-CAM stability on the fixed test subset (NOTES.md #7), and writes
+results/metrics/E##_metrics.json plus its three figures - the results file last. A T-run scores its best checkpoint on
 the validation split instead, writing validation_metrics.json beside its checkpoints: the
 tuning phase is decided on validation alone, and the test set stays untouched until the sweep.
 
@@ -28,9 +29,11 @@ from pathlib import Path
 from src.augment import build_transform
 from src.config import RECIPE, get_config, output_stem, run_title
 from src.data import build_dataloader
-from src.evaluate import choose_threshold, predict, write_metrics, write_validation_metrics
+from src.evaluate import choose_threshold, metrics_payload, predict, save_metrics, write_validation_metrics
 from src.figures import confusion_figure, curves_figure, figures_directory
+from src.gradcam import examples_figure
 from src.paths import OUTPUT_ROOT_ENV
+from src.stability import evaluate_subset
 from src.train import get_device, load_best, train
 
 
@@ -63,11 +66,13 @@ def score_split(model, split, config, workers, recipe, device):
 
 
 def evaluate_on_test(config, run_dir, root, workers, recipe):
-    """Choose the threshold on validation, then score the test split and write metrics and figure.
+    """Choose the threshold on validation, score the test split, measure stability, write it all.
 
     The threshold comes from the same best checkpoint on the validation set (NOTES.md #27) and
     is fixed before the test set is scored, which it then applies unchanged. The validation pass
-    is written beside the checkpoint, recording the threshold.
+    is written beside the checkpoint, recording the threshold. The results file is written last,
+    after the stability measurement and every figure: run_all.py counts a run as finished once
+    that file exists, so a crash anywhere before it means the evaluation simply runs again.
     """
     device, _ = get_device()
     model = load_best(config, run_dir, device)
@@ -77,10 +82,19 @@ def evaluate_on_test(config, run_dir, root, workers, recipe):
     write_validation_metrics(config, val_logits, val_labels, val_paths, run_dir, threshold=threshold)
 
     logits, labels, paths = score_split(model, "test", config, workers, recipe, device)
-    metrics = write_metrics(config, logits, labels, paths, root, threshold=threshold)
+    # Grad-CAM stability on the fixed test subset; it also saves its per-image record and the raw
+    # maps beside the checkpoint.
+    stability, examples = evaluate_subset(model, config, threshold, run_dir, workers)
+    metrics = metrics_payload(config, logits, labels, paths, threshold=threshold, stability=stability)
+
+    directory, stem = figures_directory(root), output_stem(config)
     confusion_figure(metrics["confusion_matrix"], f"{run_title(config)} - test confusion matrix",
-                     figures_directory(root) / f"{output_stem(config)}_confusion_matrix.png",
-                     metrics["confusion_matrix_tuned"], metrics["threshold"])
+                     directory / f"{stem}_confusion_matrix.png", metrics["confusion_matrix_tuned"],
+                     metrics["threshold"])
+    examples_figure(examples["images"], examples["maps"], examples["maps"].flatten(1).amax(dim=1) == 0,
+                    examples["true"], examples["predicted"], f"{run_title(config)} - Grad-CAM examples",
+                    directory / f"{stem}_gradcam_examples.png", explained="true class")
+    save_metrics(metrics, config, root)
     return metrics
 
 
@@ -126,7 +140,10 @@ def run(experiment_id, seed=None, workers=0, root=None, recipe=RECIPE, resume_ev
           f"({metrics['roc_auc_ci_low']:.4f}-{metrics['roc_auc_ci_high']:.4f}), "
           f"F1 {metrics['f1']:.4f}, balanced accuracy {metrics['balanced_accuracy']:.4f}; "
           f"at the validation-chosen threshold {metrics['threshold']:.3f}: "
-          f"F1 {metrics['f1_tuned']:.4f}, balanced accuracy {metrics['balanced_accuracy_tuned']:.4f}")
+          f"F1 {metrics['f1_tuned']:.4f}, balanced accuracy {metrics['balanced_accuracy_tuned']:.4f}; "
+          f"Grad-CAM stability in-family {metrics['gradcam_stability_in_family']:.3f}, "
+          f"out-of-family {metrics['gradcam_stability_out_of_family']:.3f}, "
+          f"gap {metrics['gradcam_stability_gap']:+.3f}")
     return metrics
 
 

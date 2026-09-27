@@ -70,8 +70,18 @@ brevity except on `roc_auc`):
     "fn": 19,
     "tp": 371
   },
-  "gradcam_stability_in_family": null,
-  "gradcam_stability_out_of_family": null,
+  "gradcam_stability_in_family": 0.91,
+  "gradcam_stability_out_of_family": 0.84,
+  "gradcam_stability_gap": 0.07,
+  "stability": {
+    "similarity": "pearson",
+    "target": "true class",
+    "subset": "data/splits/stability_subset.txt",
+    "images": 468,
+    "rotation_degrees": 5.0,
+    "noise_sigma": 0.02,
+    "...": "flip rates, chance baseline, cosine and correct-only means"
+  },
   "bootstrap": {
     "samples": 2000,
     "skipped": 0,
@@ -115,8 +125,13 @@ Notes on the fields:
   settings so any interval can be regenerated.
 * **The interval covers test-sampling noise only** - how much the number would move on another
   test set of the same size. Run-to-run training noise is a separate question (NOTES.md #21).
-* **The two stability fields stay `null`** until `src/stability.py` exists; the gap between
-  them is derived rather than stored.
+* **Grad-CAM stability** (NOTES.md #7 and the stability decision): each map explains the
+  image's true class, on a fixed subset of 468 test images; the number is the **Pearson
+  correlation** between the map of the original image and the map of the perturbed one -
+  in-family a +/-5 degree rotation (re-aligned before comparing), out-of-family Gaussian noise.
+  `gradcam_stability_gap` is in-family minus out-of-family, over the same images; all three have
+  intervals. The `stability` block records the settings and diagnostics. Tuning runs leave the
+  two stability fields `null`.
 * Labels (`model`, `data_size`, `augmentation`) use the same wording as
   `experiments/experiment_log.md`, so the two files can be read side by side.
 
