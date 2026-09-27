@@ -18,21 +18,29 @@ tuning phase is decided on validation alone, and the test set stays untouched un
 Results are named after the run - E01_metrics.json - except at a non-default seed, which adds
 the seed (E01_seed7_metrics.json) so a second seed cannot overwrite the first.
 
-Rerunning an interrupted run resumes it; rerunning a finished one is a no-op.
+Rerunning an interrupted run resumes it; rerunning a finished experiment is a no-op.
+--reevaluate redoes a finished experiment's evaluation from its best checkpoint without
+retraining (after a fix in evaluation or stability); --force retrains it from scratch.
 """
 
 import argparse
 import json
+import time
 from dataclasses import replace
+from datetime import datetime, timezone
 from pathlib import Path
+
+import torch
+import torchvision
 
 from src.augment import build_transform
 from src.config import RECIPE, get_config, output_stem, run_title
 from src.data import build_dataloader
-from src.evaluate import choose_threshold, metrics_payload, predict, save_metrics, write_validation_metrics
+from src.evaluate import (choose_threshold, metrics_payload, predict, results_directory, save_metrics,
+                          write_validation_metrics)
 from src.figures import confusion_figure, curves_figure, figures_directory
 from src.gradcam import examples_figure
-from src.paths import OUTPUT_ROOT_ENV
+from src.paths import OUTPUT_ROOT_ENV, code_version
 from src.stability import evaluate_subset
 from src.train import get_device, load_best, train
 
@@ -52,6 +60,8 @@ def parse_args():
     parser.add_argument("--resume-every", type=int, default=1,
                         help="write the resume checkpoint every N epochs (default: 1)")
     parser.add_argument("--force", action="store_true", help="retrain even if this run already finished")
+    parser.add_argument("--reevaluate", action="store_true",
+                        help="redo a finished experiment's evaluation from its best checkpoint, without retraining")
     parser.add_argument("--output-root", type=Path, default=None, help=f"default: ${OUTPUT_ROOT_ENV}, else the repo")
     return parser.parse_args()
 
@@ -74,7 +84,8 @@ def evaluate_on_test(config, run_dir, root, workers, recipe):
     after the stability measurement and every figure: run_all.py counts a run as finished once
     that file exists, so a crash anywhere before it means the evaluation simply runs again.
     """
-    device, _ = get_device()
+    started = time.perf_counter()
+    device, device_name = get_device()
     model = load_best(config, run_dir, device)
 
     val_logits, val_labels, val_paths = score_split(model, "val", config, workers, recipe, device)
@@ -94,6 +105,17 @@ def evaluate_on_test(config, run_dir, root, workers, recipe):
     examples_figure(examples["images"], examples["maps"], examples["maps"].flatten(1).amax(dim=1) == 0,
                     examples["true"], examples["predicted"], f"{run_title(config)} - Grad-CAM examples",
                     directory / f"{stem}_gradcam_examples.png", explained="true class")
+    history = json.loads((run_dir / "history.json").read_text(encoding="utf-8"))["epochs"]
+    # Where and with what this evaluation ran - a re-evaluated run is otherwise indistinguishable
+    # from an uninterrupted one, since evaluation writes nothing to train.log.
+    metrics["evaluation"] = {
+        "code_version": code_version(), "device": device_name, "torch": torch.__version__,
+        "torchvision": torchvision.__version__,
+        "evaluated_at": datetime.now(timezone.utc).isoformat(timespec="seconds"),
+        "training_minutes": round(sum(row["seconds"] for row in history) / 60, 1),
+        "evaluation_minutes": round((time.perf_counter() - started) / 60, 1),
+    }
+    # Written last, so a results file - which run_all.py reads as "finished" - only exists complete.
     save_metrics(metrics, config, root)
     return metrics
 
@@ -110,13 +132,19 @@ def evaluate_on_validation(config, run_dir, workers, recipe):
     return write_validation_metrics(config, logits, labels, paths, run_dir)
 
 
-def run(experiment_id, seed=None, workers=0, root=None, recipe=RECIPE, resume_every=1, force=False):
+def run(experiment_id, seed=None, workers=0, root=None, recipe=RECIPE, resume_every=1, force=False,
+        reevaluate=False):
     """Train, evaluate and plot one config end to end.
 
     Returns the metrics dict: test metrics for an experiment, validation metrics for a tuning
-    run, which never touches the test split.
+    run, which never touches the test split. A finished experiment is skipped and its saved
+    results returned, unless reevaluate (evaluation only) or force (everything) is set.
     """
     config = get_config(experiment_id, seed)
+    results = results_directory(root) / f"{output_stem(config)}_metrics.json"
+    if config.run_id.startswith("E") and results.exists() and not (force or reevaluate):
+        print(f"{config.run_id}: already done - results in {results} (use --reevaluate or --force to redo)")
+        return json.loads(results.read_text(encoding="utf-8"))
     run_dir = train(config, recipe, root, workers, resume_every, force)
 
     history = json.loads((run_dir / "history.json").read_text(encoding="utf-8"))["epochs"]
@@ -134,8 +162,6 @@ def run(experiment_id, seed=None, workers=0, root=None, recipe=RECIPE, resume_ev
         return metrics
 
     metrics = evaluate_on_test(config, run_dir, root, workers, recipe)
-    # TODO workplan sections 6-7: the Grad-CAM examples figure, and the two stability fields,
-    # which write_metrics currently leaves null.
     print(f"{config.run_id}: test ROC-AUC {metrics['roc_auc']:.4f} "
           f"({metrics['roc_auc_ci_low']:.4f}-{metrics['roc_auc_ci_high']:.4f}), "
           f"F1 {metrics['f1']:.4f}, balanced accuracy {metrics['balanced_accuracy']:.4f}; "
@@ -143,7 +169,8 @@ def run(experiment_id, seed=None, workers=0, root=None, recipe=RECIPE, resume_ev
           f"F1 {metrics['f1_tuned']:.4f}, balanced accuracy {metrics['balanced_accuracy_tuned']:.4f}; "
           f"Grad-CAM stability in-family {metrics['gradcam_stability_in_family']:.3f}, "
           f"out-of-family {metrics['gradcam_stability_out_of_family']:.3f}, "
-          f"gap {metrics['gradcam_stability_gap']:+.3f}")
+          f"gap {metrics['gradcam_stability_gap']:+.3f}; evaluation took "
+          f"{metrics['evaluation']['evaluation_minutes']} min")
     return metrics
 
 
@@ -151,7 +178,8 @@ def main():
     """Run the experiment named on the command line."""
     args = parse_args()
     recipe = RECIPE if args.max_epochs is None else replace(RECIPE, max_epochs=args.max_epochs)
-    run(args.id, args.seed, args.workers, args.output_root, recipe, args.resume_every, args.force)
+    run(args.id, args.seed, args.workers, args.output_root, recipe, args.resume_every, args.force,
+        args.reevaluate)
 
 
 if __name__ == "__main__":
