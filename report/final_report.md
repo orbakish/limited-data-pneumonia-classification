@@ -64,6 +64,12 @@ Heatmap similarity is measured using Pearson correlation. Pearson was used inste
 
 ## Team Contributions
 
+Or Bakish was responsible for repository organization and documentation, dataset organization and exploratory data analysis, experiment planning and tracking, maintenance of the experiment and results documentation, and preparation of the final report and presentation.
+
+Yotam Gilboa was responsible for the PyTorch training pipeline, model implementation and fine-tuning, data augmentation, training and evaluation of the experimental configurations, Grad-CAM and stability implementation, and technical analysis of the experimental results.
+
+Both team members jointly reviewed the experimental design, discussed methodological decisions, interpreted the results, and prepared the final conclusions and presentation.
+
 ## Code and Reproducibility
 
 ## References
