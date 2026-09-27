@@ -372,7 +372,7 @@ def main():
         rows = report(args.output_root, args.seed)
         where = (args.output_root or output_root()) / "results"
         print(f"{len(rows)} of {len(EXPERIMENTS)} experiments found for seed {args.seed}; "
-              f"summary figures and summary_table.md written under {where}" if rows else
+              f"summary figures and table written under {where}" if rows else
               f"no results files for seed {args.seed} under {where}")
         return
 
