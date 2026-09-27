@@ -72,4 +72,12 @@ Both team members jointly reviewed the experimental design, discussed methodolog
 
 ## Code and Reproducibility
 
+The complete project code is available in the project GitHub repository. The repository contains the training and evaluation pipeline, experiment configurations, dataset analysis scripts, Grad-CAM and stability code, experiment logs, and documentation.
+
+Experiments are run in Google Colab using PyTorch. The repository records the software environment and experiment configuration, while datasets, checkpoints, and generated results are stored separately in Google Drive. Each experiment is identified by a fixed experiment ID and random seed, and its configuration and results are saved for later comparison.
+
+The main experiments can be reproduced using the provided experiment entry points: `run_experiment.py` for a single configuration and `run_all.py` for the complete experiment sweep. The official test split is kept unchanged throughout the project.
+
+GitHub: `<repository link>`
+
 ## References
