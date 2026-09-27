@@ -75,7 +75,7 @@ For threshold-dependent metrics, we report both the standard threshold of 0.5 an
 
 In addition, Grad-CAM is used to analyze model explanations and possible shortcut learning.
 
-Explanation stability is measured on a fixed class-balanced subset of test images using two small perturbation families: an in-family rotation and out-of-family Gaussian noise. Stability is reported separately for both perturbations.
+Explanation stability is measured on a fixed class-balanced subset of test images using two small perturbation families: an in-family rotation and out-of-family Gaussian noise. Grad-CAM heatmap similarity is measured using Pearson correlation, and stability is reported separately for both perturbations.
 
 ## Project Category
 
