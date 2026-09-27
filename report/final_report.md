@@ -26,6 +26,38 @@ All images are resized directly to 224×224 pixels. Aspect-preserving padding wa
 
 ## 3. Methodology
 
+### 3.1 Experimental Setup and Models
+
+We evaluate three ImageNet-pretrained CNN architectures: MobileNetV3-Small, ResNet18, and EfficientNet-B0. The architectures differ in size and complexity, allowing us to examine whether augmentation and limited training data affect lightweight and larger models differently.
+
+For each architecture, we train models using 20%, 50%, and 100% of the available post-split training pool. The limited-data subsets are nested, so the 20% subset is contained in the 50% subset, which is contained in the full training set. Sampling is stratified by class to preserve the original class distribution. Combined with the three augmentation regimes, this produces 27 experimental configurations.
+
+A validation-only tuning phase was performed before the main experiments to select a common training recipe. Based on this tuning, all 27 configurations use partial fine-tuning and class-weighted cross-entropy. Partial fine-tuning updates the final high-level feature stage and classifier of each pretrained architecture while keeping earlier layers frozen.
+
+### 3.2 Preprocessing and Data Augmentation
+
+All input images are first converted to grayscale and then replicated into three identical channels to match the input format expected by ImageNet-pretrained models. Images are resized directly to 224×224 pixels and normalized using ImageNet statistics.
+
+Three augmentation regimes are compared. The baseline uses no augmentation. The mild regime applies small rotations (up to ±5°), translations up to 2%, limited zoom, and brightness and contrast changes up to ±10%. The strong regime increases these magnitudes to rotations up to ±15°, translations up to 5%, stronger zoom-out, and brightness and contrast changes up to ±25%.
+
+All augmentations were chosen to preserve clinically relevant image content. Horizontal flipping, random cropping, random erasing, and geometric warping were excluded because they may change anatomy, laterality, or remove visible pathology.
+
+### 3.3 Training Protocol
+
+All models are trained using AdamW with weight decay of 1e-4. The newly initialized classification layer uses a learning rate of 1e-3, while pretrained layers use 1e-4. Training uses a batch size of 32 for a maximum of 30 epochs, with early stopping after five epochs without improvement.
+
+Checkpoint selection is based on validation balanced accuracy at the standard decision threshold of 0.5. Class-weighted cross-entropy is used to account for the training-set imbalance. The same training recipe is used for all architectures, data sizes, and augmentation regimes.
+
+The complete 27-experiment sweep is repeated with two random seeds, 42 and 43, using the same code and experimental configuration. This allows us to estimate how sensitive the observed differences are to training randomness rather than relying on a single run.
+
+### 3.4 Evaluation and Explanation Stability
+
+Classification performance is evaluated using accuracy, precision, recall, specificity, F1-score, balanced accuracy, ROC-AUC, and confusion matrices. Confidence intervals are also reported for the main metrics. Threshold-dependent metrics are evaluated both at the standard threshold of 0.5 and at a threshold selected on the validation set to maximize balanced accuracy. The test set is not used for model selection or threshold tuning.
+
+Grad-CAM is used to examine which image regions contribute to each model's prediction. Explanation stability is evaluated on a fixed class-balanced set of 468 test images, containing all 234 Normal images and 234 Pneumonia images. For each image, the original Grad-CAM heatmap is compared with heatmaps obtained after two small perturbations: a small rotation as the in-family perturbation and Gaussian noise with σ = 0.02 as the out-of-family perturbation.
+
+Heatmap similarity is measured using Pearson correlation. Pearson was used instead of the cosine similarity originally proposed because Grad-CAM maps are non-negative after ReLU, which can make cosine similarity high even when the main activation regions differ. Pearson correlation removes each map's mean before comparison and therefore provides better separation between meaningful spatial agreement and shared positive background. For rotated inputs, the heatmap is aligned back to the original orientation before the comparison.
+
 ## 4. Results and Analysis
 
 ## 5. Discussion and Conclusion
