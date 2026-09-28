@@ -17,9 +17,10 @@ pneumonia ones, are the grainier. Four parts:
   unperturbed (checked against the collected scores first), re-encoded as JPEG quality 75, blurred,
   and sharpened by the same amount - and gives margin Grad-CAM maps of the stability subset. Its
   readings, where the margin maps sit and each version's pixel change are computed locally, with the rest.
-* audit (manual): numbered overlays for a person to label where each map's hot spot sits.
+* audit (manual): numbered overlays for a person to label where each map's hot spot sits; once labelled, a
+  tally per architecture and regime, and a check of the regions' statistics against the labels.
 
-    python -m src.shortcut                   # covariates, regions, intervention readings -> results/shortcut/
+    python -m src.shortcut                   # covariates, regions, intervention readings, audit -> results/shortcut/
     python -m src.shortcut --audit-sheets    # the audit's numbered sheets and label template
     python -m src.shortcut --intervene --seed 42 --workers 2   # Colab; add --id E01 for one run
     python -m src.shortcut --check           # self-check on synthetic data
@@ -119,6 +120,24 @@ ENCODING_RISE, ENCODING_RATIO, ENCODING_WEAK, VERDICT_RUNS = 1.0, 5.0, 0.5, 12
 MIN_GAP = 0.05
 # The audit's margin overlays are drawn only if fewer than a quarter of their 30 maps are empty: at most 7.
 AUDIT_MAX_EMPTY = 7
+# The overlays whose main spot is the neck, fixed from the rater's notes before the key was opened (NOTES.md, the
+# audit's labelling row). The neck and the lungs' tops overlap at 7x7, so the lung field is counted both ways.
+AUDIT_NECK = (9, 10, 32, 35, 50, 51, 54, 56)
+# The places #15 is about: the frame, printed markers and attached devices. Below the diaphragm is anatomy, not
+# an artefact, so it is a group of its own.
+AUDIT_SHORTCUT = ("image edge-background", "marker-text", "device-wires")
+AUDIT_GROUPS = ("lung field", "mediastinum-heart", "below the diaphragm", "neck", "shortcut place", "other")
+# The peak category (map_regions) each main label expects, fixed before the key was opened; the labels not
+# listed expect none. A cell both dark and in EDGE is named "background", so a marker on a dark corner may read so.
+AUDIT_PEAKS = {"lung field": ("other",), "mediastinum-heart": ("other",), "image edge-background": ("background",),
+               "marker-text": ("background", "edge"), "below the diaphragm": ("edge",)}
+# The check of part 2's statistics: the labels and a share agree if the AUC of the shortcut places against the lung
+# field reaches AUDIT_AGREE, agree weakly from AUDIT_WEAK; a group of fewer than AUDIT_MIN_GROUP gives no reading.
+AUDIT_AGREE, AUDIT_WEAK, AUDIT_MIN_GROUP = 0.75, 0.60, 3
+# The audit's three sets of overlays: the true-class maps of each class, and the healthy images' margin maps.
+AUDIT_SECTIONS = (("true class", "NORMAL"), ("true class", "PNEUMONIA"), ("margin", "NORMAL"))
+# What the tally counts per overlay (audit_flags): on a shortcut place, and on the lung field two ways.
+AUDIT_FLAGS = ("shortcut", "lung_neck_off", "lung_neck_as_lung")
 
 
 def unnormalised_transform():
@@ -458,7 +477,7 @@ def summary(rows, table, correlations, shifts, per_run, comparisons, difference)
         "Written by `python -m src.shortcut` from the dataset and `results/runs/`; change the code, not this file.",
         "The readings were stated in the plan before any model output was related to an image property (NOTES.md",
         "#15). The intervention (Colab) follows the regions, from the section \"The intervention (part 3)\" on; the",
-        "audit's labels come later.",
+        "visual audit's labels and their check close it, in \"The visual audit (part 4)\".",
         "",
         "## Checks",
         "",
@@ -625,6 +644,14 @@ def analyse(root=None):
                           - runs[row["experiment"], row["seed"]]["metrics"]["specificity"])
                       for row in results if row["split"] == "test" and row["class"] == "NORMAL")
     checks = (len({(row["experiment"], row["seed"]) for row in results}), specificity)
+    # The visual audit, once the rater's labels are in. Its key is opened here, and only here: the readings were
+    # fixed before anyone joined the labels to the runs (NOTES.md #15).
+    audit = results_directory(root, "shortcut") / "audit"
+    overlays = None
+    if (audit / "labels.csv").exists():
+        with (audit / "key.csv").open(newline="", encoding="utf-8") as handle:
+            key = list(csv.DictReader(handle))
+        overlays = audit_rows(runs, rows, read_labels(audit / "labels.csv"), key, root)
 
     directory = results_directory(root, "shortcut")
     write_csv(table, directory / "availability.csv")
@@ -635,9 +662,12 @@ def analyse(root=None):
     write_csv(results, directory / "intervention.csv")
     write_csv(margin_per_run, directory / "margin_regions.csv")
     write_csv(margin_comparisons, directory / "margin_region_comparisons.csv")
+    if overlays:
+        write_csv(overlays, audit / "overlays.csv")
     text = summary(rows, table, correlations, shifts, per_run, comparisons, difference)
     text += intervention_summary(rows, results, readings, shares, links, pixels, margin_per_run, margin_comparisons,
                                  audit_empty, checks)
+    text += audit_summary(overlays, comparisons, margin_comparisons)
     (directory / "summary.md").write_text(text, encoding="utf-8")
     intervention_figure(results, directory / "shortcut_intervention.png")
     regions_figure(margin_per_run, "edge_share", "share of the margin map\non the top corners and bottom row",
@@ -652,7 +682,8 @@ def analyse(root=None):
                    directory / "shortcut_regions_edge.png")
     print(f"  preprocessing against the evaluation transform: largest difference {difference:.1e}")
     print(f"{len(rows)} images, {len(correlations)} correlation rows, {len(per_run)} region rows, {len(results)} "
-          f"intervention rows, {len(margin_per_run)} margin-region rows written to {directory}")
+          f"intervention rows, {len(margin_per_run)} margin-region rows, "
+          f"{len(overlays) if overlays else 'no'} audit overlays written to {directory}")
     return text
 
 
@@ -760,6 +791,303 @@ def audit_sheets(root=None):
         "labelling: it says which run, image and map each overlay is.\n", encoding="utf-8")
     print(f"{len(items)} overlays on {len(range(0, len(items), AUDIT_PER_SHEET))} sheets written to {directory} "
           f"({empty} of the {total} margin maps empty; at most {AUDIT_MAX_EMPTY} allowed)")
+
+
+def read_labels(path):
+    """Return the rater's audit labels as rows (number, label, second_label, note), in order.
+
+    Raises ValueError unless the columns are exactly those four, the numbers run 1, 2, ... in order, and every
+    label and second label is one of AUDIT_LABELS (a second label may be blank).
+    """
+    with path.open(newline="", encoding="utf-8") as handle:
+        rows = list(csv.DictReader(handle))
+    # DictReader keys each row by the header; values past the header's columns land under the key None, so an
+    # extra column shows up in the row's keys.
+    if not rows or any(list(row) != ["number", "label", "second_label", "note"] for row in rows):
+        raise ValueError(f"{path} must have exactly the columns number, label, second_label, note")
+    if [row["number"] for row in rows] != [str(number) for number in range(1, len(rows) + 1)]:
+        raise ValueError(f"{path}: the overlay numbers must run 1, 2, ... in order")
+    wrong = [row["number"] for row in rows
+             if row["label"] not in AUDIT_LABELS or row["second_label"] not in AUDIT_LABELS + ("",)]
+    if wrong:
+        raise ValueError(f"{path}: overlays {', '.join(wrong)} have a label that is not one of the seven places")
+    return rows
+
+
+def audit_group(number, label):
+    """Return an overlay's group (one of AUDIT_GROUPS) from its number and main label."""
+    if number in AUDIT_NECK:
+        return "neck"
+    if label in AUDIT_SHORTCUT:
+        return "shortcut place"
+    return "other" if label == "diffuse-other" else label
+
+
+def audit_rows(runs, rows, labels, key, root=None):
+    """Return one row per audit overlay: its run, image and map, the rater's labels, and that map's regions.
+
+    The run, image and map come from the code's own draw (audit_items), which must equal key.csv (key, as
+    csv.DictReader reads it) overlay for overlay; the region values are map_regions' on that very map, as part 2
+    averages them. Raises ValueError where the key or the labels differ from the draw, where a neck overlay is not
+    labelled diffuse-other, or where the overlays noted "empty map" are not exactly those whose map is empty -
+    the labels and the maps would be out of step, or an empty map would be counted with no shares.
+    """
+    names = [subset_name(record) for record in next(iter(runs.values()))["records"]]
+    items = audit_items(names, margin=True)
+    # key.csv holds text, so the draw is compared as text: its seed 42 is the string "42".
+    drawn = [{"number": str(number), "experiment": run_key[0], "seed": str(run_key[1]), "image": names[position],
+              "map": kind} for number, (run_key, position, kind) in enumerate(items, 1)]
+    if drawn != key:
+        raise ValueError("key.csv differs from the code's draw of the audit")
+    if len(labels) != len(items):
+        raise ValueError(f"{len(labels)} labels for {len(items)} overlays")
+    test = {row["image"]: row for row in rows if row["split"] == "test"}
+    maps = {}
+    for run_key in audit_runs():
+        folder = results_directory(root, "runs") / run_directory(runs[run_key]["config"]).name
+        maps[run_key, "true class"] = np.load(folder / "stability_maps.npy")[:, 0]
+        maps[run_key, "margin"] = np.load(folder / "margin_maps.npy")
+    results = []
+    for label, (run_key, position, kind) in zip(labels, items):
+        number = int(label["number"])
+        background = np.array([cell == "1" for cell in test[names[position]]["background"]]).reshape(1, CELLS, CELLS)
+        # [None] adds a leading axis: map_regions takes a stack of maps, here a stack of one.
+        share, edge, category = map_regions(maps[run_key, kind][position][None], background)
+        peak = str(category[0])
+        expected = AUDIT_PEAKS.get(label["label"], ())
+        results.append({"number": number, **run_columns(runs[run_key]), "class": names[position].split("/")[0],
+                        "image": names[position], "map": kind, "label": label["label"],
+                        "second_label": label["second_label"], "note": label["note"],
+                        "group": audit_group(number, label["label"]), "neck": number in AUDIT_NECK,
+                        "empty": peak == "empty", "background_share": float(share[0]), "edge_share": float(edge[0]),
+                        "peak": peak, "expected_peak": " or ".join(expected),
+                        "peak_agrees": peak in expected if expected and peak != "empty" else None})
+    wrong = [row["number"] for row in results if row["neck"] and row["label"] != "diffuse-other"]
+    if wrong:
+        raise ValueError(f"the neck overlays {wrong} are not labelled diffuse-other")
+    noted = {row["number"] for row in results if row["note"] == "empty map"}
+    empty = {row["number"] for row in results if row["empty"]}
+    if noted != empty:
+        raise ValueError(f"the overlays noted 'empty map' ({sorted(noted)}) are not those with an empty map "
+                         f"({sorted(empty)})")
+    return results
+
+
+def audit_flags(row):
+    """Return {AUDIT_FLAGS: yes or no} for an overlay: on a shortcut place, and on the lung field with the neck off
+    the lungs and with the neck as their tops."""
+    return dict(zip(AUDIT_FLAGS, (row["group"] == "shortcut place", row["group"] == "lung field",
+                                  row["group"] in ("lung field", "neck"))))
+
+
+def audit_tallies(overlays):
+    """Return (cells, moves): the audit's counts per architecture and regime, and its none-strong pairs.
+
+    cells: one dict per section (AUDIT_SECTIONS) x architecture (and "All") x regime - the non-empty maps of
+    each group, the empty maps, and the counts of audit_flags plus a shortcut place as the main or second label.
+    moves: per section, the same image in the none and the strong run of one architecture, both maps non-empty,
+    counted none only / strong only / both / neither for each of audit_flags.
+    """
+    none, strong = LOG_LABELS["none"], LOG_LABELS["strong"]
+    cells = []
+    moves = []
+    for kind, name in AUDIT_SECTIONS:
+        section = [row for row in overlays if row["map"] == kind and row["class"] == name]
+        for model in [LOG_LABELS[model] for model in MODELS] + ["All"]:
+            for regime in (none, strong):
+                own = [row for row in section if (model == "All" or row["model"] == model)
+                       and row["augmentation"] == regime]
+                kept = [row for row in own if not row["empty"]]
+                flags = [audit_flags(row) for row in kept]
+                cells.append({"map": kind, "class": name, "model": model, "augmentation": regime,
+                              "maps": len(kept), "empty": len(own) - len(kept),
+                              **{group: sum(row["group"] == group for row in kept) for group in AUDIT_GROUPS},
+                              **{flag: sum(row[flag] for row in flags) for flag in AUDIT_FLAGS},
+                              "shortcut_any": sum(row["group"] == "shortcut place"
+                                                  or row["second_label"] in AUDIT_SHORTCUT for row in kept)})
+        # The none and the strong overlay of each image in each architecture, keyed by the two;
+        # setdefault returns the dict already stored under a key, or stores and returns the empty one given.
+        by_image = {}
+        for row in section:
+            by_image.setdefault((row["model"], row["image"]), {})[row["augmentation"]] = row
+        matched = [(both[none], both[strong]) for both in by_image.values()
+                   if none in both and strong in both and not both[none]["empty"] and not both[strong]["empty"]]
+        entry = {"map": kind, "class": name, "pairs": len(matched)}
+        for flag in AUDIT_FLAGS:
+            outcomes = [(audit_flags(first)[flag], audit_flags(second)[flag]) for first, second in matched]
+            entry[flag] = tuple(outcomes.count(outcome)
+                                for outcome in ((True, False), (False, True), (True, True), (False, False)))
+        moves.append(entry)
+    return cells, moves
+
+
+def agreement(auc, sizes):
+    """Return the reading of one AUC line: agree, agree weakly, do not agree, or "-" for too few overlays."""
+    if min(sizes) < AUDIT_MIN_GROUP:
+        return "-"
+    if auc >= AUDIT_AGREE:
+        return "agree"
+    return "agree weakly" if auc >= AUDIT_WEAK else "do not agree"
+
+
+def audit_reading(pooled, per_type):
+    """Return one share's reading: the pooled line's, or "disagreement" if it agrees while a map type does not."""
+    if pooled in ("agree", "agree weakly") and "do not agree" in per_type:
+        return "disagreement"
+    return pooled
+
+
+def audit_check(overlays):
+    """Return (lines, readings): part 2's shares of the overlays of a group against those on the lung field.
+
+    A line compares, on one share, the non-empty overlays of one group of main labels with the lung-field ones:
+    their counts, medians and the AUC - the chance that an overlay of the group has the higher share, a tie
+    counting half. The main line is every shortcut place, pooled over both map types and, as a check, per map
+    type; single labels are pooled only and descriptive. readings: {share: its reading (audit_reading)}.
+    """
+    kept = [row for row in overlays if not row["empty"]]
+    plan = [("shortcut place", scope, share) for share in ("background_share", "edge_share")
+            for scope in ("both", "true class", "margin")]
+    plan += [(label, "both", share) for label, share in (("image edge-background", "background_share"),
+                                                         ("marker-text", "background_share"),
+                                                         ("marker-text", "edge_share"),
+                                                         ("below the diaphragm", "edge_share"))]
+    lines = []
+    for name, scope, share in plan:
+        rows = [row for row in kept if scope in ("both", row["map"])]
+        # The main line groups overlays by their group, a single-label line by their main label.
+        group = [row[share] for row in rows if row["group" if name == "shortcut place" else "label"] == name]
+        lung = [row[share] for row in rows if row["group"] == "lung field"]
+        auc = None
+        if group and lung:
+            # With the group as 1 and the lung field as 0, the ROC-AUC is the chance that a group overlay has the
+            # higher share, a tie counting half.
+            auc = float(roc_auc_score([1] * len(group) + [0] * len(lung), group + lung))
+        lines.append({"group": name, "maps": scope, "share": share, "overlays": (len(group), len(lung)),
+                      "medians": tuple(float(np.median(values)) if values else None for values in (group, lung)),
+                      "auc": auc, "reading": agreement(auc, (len(group), len(lung)))})
+    readings = {}
+    for share in ("background_share", "edge_share"):
+        main = {row["maps"]: row["reading"] for row in lines if row["group"] == "shortcut place"
+                and row["share"] == share}
+        readings[share] = audit_reading(main["both"], [main["true class"], main["margin"]])
+    return lines, readings
+
+
+def audit_summary(overlays, comparisons, margin_comparisons):
+    """Return the summary.md section of part 4: the visual audit's checks, tallies and its check of part 2's
+    statistics - or a line saying the labels are not in yet (overlays None)."""
+    lines = ["", "## The visual audit (part 4)", ""]
+    if not overlays:
+        return "\n".join(lines + ["The labels (`audit/labels.csv`) are not in yet; this section is written once they "
+                                  "are."]) + "\n"
+    cells, moves = audit_tallies(overlays)
+    check, readings = audit_check(overlays)
+    empty = [str(row["number"]) for row in overlays if row["empty"]]
+    lines += ["Six runs - each architecture without and with strong augmentation, 100% data, seed 42 - and the same",
+              "10 subset images in each (5 NORMAL, 5 PNEUMONIA): 60 overlays of the true-class map, then 30 of the",
+              "healthy images' margin maps (61-90), shuffled and numbered (`audit/`). One rater (Yotam) named each",
+              "overlay's main hot spot without the key; he had seen the region statistics and each architecture's map",
+              "style, so the audit is not blind, and some rules were settled while labelling (NOTES.md, the audit's",
+              "labelling row). With one rater there is no kappa. Every overlay's run, labels and region values:",
+              "`audit/overlays.csv`.", "", "**Checks:**", "",
+              "- `key.csv` equals the code's draw of the audit, overlay for overlay.",
+              f"- The overlays noted \"empty map\" are exactly those whose map is empty: {', '.join(empty) or 'none'} - "
+              "left out of every count.",
+              f"- Every label is one of the seven places; the neck overlays ({', '.join(map(str, AUDIT_NECK))}) are "
+              "labelled diffuse-other.", "",
+              "**Groups of the main label:** a *shortcut place* is " + ", ".join(AUDIT_SHORTCUT) + " - the frame, "
+              "printed markers and attached devices #15 is about. Below the diaphragm is anatomy, not an artefact, so "
+              "it is a group of its own. *Neck* is the overlays whose main spot is the neck; it overlaps the lungs' "
+              "tops at 7x7, so the lung field is counted twice - with the neck off the lungs, and as their tops. "
+              "*Other* is diffuse-other outside the neck.", ""]
+    titles = {("true class", "NORMAL"): "True-class maps, NORMAL images",
+              ("true class", "PNEUMONIA"): "True-class maps, PNEUMONIA images",
+              ("margin", "NORMAL"): "Margin maps, NORMAL images - the evidence for pneumonia in a healthy image"}
+    for kind, name in AUDIT_SECTIONS:
+        lines += [f"**{titles[kind, name]}** - non-empty overlays per group of the main label (5 images per run):", "",
+                  "| Architecture | Regime | Maps | " + " | ".join(AUDIT_GROUPS)
+                  + " | On the lung field: neck off / as lung tops | On a shortcut place: main / main or second |",
+                  "|---|---|---|" + "---|" * (len(AUDIT_GROUPS) + 2)]
+        for cell in cells:
+            if (cell["map"], cell["class"]) != (kind, name):
+                continue
+            maps = f"{cell['maps']}" + (f" ({cell['empty']} empty)" if cell["empty"] else "")
+            lines.append(f"| {cell['model']} | {cell['augmentation']} | {maps} | "
+                         + " | ".join(str(cell[group]) for group in AUDIT_GROUPS)
+                         + f" | {cell['lung_neck_off']} / {cell['lung_neck_as_lung']} of {cell['maps']} | "
+                           f"{cell['shortcut']} / {cell['shortcut_any']} of {cell['maps']} |")
+        lines.append("")
+
+    def pointer(rows, name):
+        """Return part 2's strong-none rows for one class: of its 9 cells, how many are consistently up / down."""
+        parts = []
+        for measure, label in (("edge_share", "edge"), ("background_share", "background")):
+            own = [row for row in rows if row["kind"] == "regime" and row["contrast"] == "strong-none"
+                   and row["class"] == name and row["metric"] == measure and row["view"] == "mean"]
+            up = sum(bool(row["consistent"]) and row["difference"] > 0 for row in own)
+            down = sum(bool(row["consistent"]) and row["difference"] < 0 for row in own)
+            parts.append(f"{label} {up} up / {down} down of {len(own)}")
+        return "; ".join(parts)
+
+    lines += ["**Augmentation, paired by image** (descriptive): the same image in the none and the strong run of one",
+              "architecture, pooled over the three, both maps non-empty. The pairs are 5 images x 3 architectures, and",
+              "the healthy images return in the margin rows, so they are not independent pairs and no test is given.",
+              "Part 2's strong-none rows are a pointer, not a match: they average all 468 images over 9 cells, both",
+              "seeds and all data sizes (cells consistently up / down, from its tables above).", "",
+              "| Maps, class | Pairs | Shortcut place: none only / strong only / both / neither | Lung field, neck off "
+              "| Lung field, neck as lung tops | Part 2, strong-none (a pointer, not a match) |",
+              "|---|---|---|---|---|---|"]
+    for move in moves:
+        source = margin_comparisons if move["map"] == "margin" else comparisons
+        lines.append(f"| {move['map']}, {move['class']} | {move['pairs']} | "
+                     + " | ".join(" / ".join(map(str, move[flag])) for flag in AUDIT_FLAGS)
+                     + f" | {pointer(source, move['class'])} |")
+
+    lines += ["", "### The check of part 2's statistics (the reading was stated before the key was opened)", "",
+              "Part 2's shares of each non-empty overlay's own map, for the overlays of a group of main labels against",
+              "those on the lung field; the AUC is the chance that an overlay of the group has the higher share, a tie",
+              "counting half. The main line is every shortcut place, pooled over both map types: the labels and a share",
+              f"**agree** if its AUC is at least {AUDIT_AGREE:.2f}, **agree weakly** from {AUDIT_WEAK:.2f}, and **do not "
+              f"agree** below; '-' if either group has fewer than {AUDIT_MIN_GROUP} overlays. It is also given per map",
+              "type: overlays 61-90 are all margin maps of healthy images, which sit on the edge more whatever their",
+              "label, and 1-60 hold most of the lung-field labels - so if the pooled line agrees while a map type alone",
+              "does not agree, the reading is **disagreement**. The single labels are descriptive: by the labelling",
+              "rules, image edge-background also holds spots on the body around the arms, which are not dark cells, and",
+              "a marker on the dark border is marker-text, so a single label can differ from a share for that alone.", "",
+              "| Group | Maps | Share | Overlays: group / lung field | Median: group / lung field | AUC | Reading |",
+              "|---|---|---|---|---|---|---|"]
+    share_names = {"background_share": "background cells", "edge_share": "top corners and bottom row"}
+    for row in check:
+        medians = " / ".join("-" if value is None else f"{value:.3f}" for value in row["medians"])
+        auc = "-" if row["auc"] is None else f"{row['auc']:.2f}"
+        lines.append(f"| {row['group']} | {row['maps']} | {share_names[row['share']]} | "
+                     f"{row['overlays'][0]} / {row['overlays'][1]} | {medians} | {auc} | {row['reading']} |")
+    lines += ["", f"**The share on background cells: {readings['background_share']}. The share on the top corners and "
+                  f"bottom row: {readings['edge_share']}.**", "",
+              "**Where each map peaks, against its label** - the like-for-like check, since the label names the main",
+              "hot spot, the peak. The peak cell's category (a background cell first, then the top corners and bottom",
+              "row, else other) per main label, and whether it is where the label expects it (fixed before the key was",
+              "opened; a marker on a dark corner may read background):", "",
+              "| Main label | Peak: background / edge / other | Expected | Agree |", "|---|---|---|---|"]
+    kept = [row for row in overlays if not row["empty"]]
+    for label in AUDIT_LABELS[:-1] + ("neck", "diffuse-other"):
+        own = [row for row in kept if ("neck" if row["neck"] else row["label"]) == label]
+        if not own:
+            continue
+        peaks = " / ".join(str(sum(row["peak"] == peak for row in own)) for peak in ("background", "edge", "other"))
+        agree = f"{sum(row['peak_agrees'] is True for row in own)} of {len(own)}" if label in AUDIT_PEAKS else "-"
+        lines.append(f"| {label} | {peaks} | {' or '.join(AUDIT_PEAKS.get(label, ('-',)))} | {agree} |")
+    judged = [row for row in kept if row["peak_agrees"] is not None]
+    lines += ["", f"Over the labels with an expected peak: {sum(row['peak_agrees'] for row in judged)} of {len(judged)} "
+                  "peaks agree.", "",
+              "**Caveats.** The label names the main hot spot - the peak, as the eye sees an overlay scaled to its own",
+              "maximum - while the shares are mass over all 49 cells: a diffuse map peaking on the lung with a quarter",
+              "of its mass on the border is rightly lung field and rightly has a high background share, so a middling",
+              "AUC is expected even when both are right; the peak table is the like-for-like check. The overlays are not",
+              "independent - the same 10 images in six runs of one seed at 100% data - and the rater had seen the",
+              "region statistics, so agreement is two views of one map agreeing, not an independent validation."]
+    return "\n".join(lines) + "\n"
 
 
 def reencode(image, quality=QUALITY):
@@ -1340,7 +1668,8 @@ def intervention_figure(results, path):
 
 def self_check():
     """Check the regions, the image features, the partial correlation, the audit draw, the intervention's
-    versions and gate, and step 3's readings, shares, margin maps and caches on synthetic data."""
+    versions and gate, step 3's readings, shares, margin maps and caches, and the audit's join, tally and
+    check on synthetic data."""
     maps = np.zeros((3, CELLS, CELLS))
     maps[0, 0, 0] = 1.0
     maps[1, 3, 3] = 2.0
@@ -1506,6 +1835,96 @@ def self_check():
     print(f"  the audit's margin overlays are appended after the 60 true-class ones, which do not change: "
           f"{items[:60] == audit_items(names) and len(items) == 90} "
           f"{all(kind == 'margin' and names[position].startswith('NORMAL/') for _, position, kind in items[60:])}")
+
+    # The audit's join, on six made-up runs whose every map has its mass in the centre cell (peak "other").
+    with tempfile.TemporaryDirectory() as folder:
+        root = Path(folder)
+        records = [{"class": name.split("/")[0], "image": name.split("/")[1]} for name in names]
+        made_runs, stored = {}, {}
+        for run_key in audit_runs():
+            config = get_config(*run_key)
+            made_runs[run_key] = {"id": run_key[0], "seed": run_key[1], "config": config, "records": records}
+            true_class, margin = np.zeros((len(names), 5, CELLS, CELLS)), np.zeros((len(names), CELLS, CELLS))
+            true_class[:, 0, 3, 3] = margin[:, 3, 3] = 1.0
+            stored[run_key] = (true_class, margin)
+        # Overlays 1 and 2 are true-class maps (the first 60 are): overlay 1's sits on a dark top corner and is
+        # labelled a marker, overlay 2's is empty.
+        (first_key, first_position, _), (second_key, second_position, _) = items[0], items[1]
+        stored[first_key][0][first_position, 0] = 0.0
+        stored[first_key][0][first_position, 0, 0, 0] = 1.0
+        stored[second_key][0][second_position, 0] = 0.0
+        corner = "1" + "0" * (CELLS ** 2 - 1)
+        made_rows = [{"split": "test", "image": name,
+                      "background": corner if position == first_position else "0" * CELLS ** 2}
+                     for position, name in enumerate(names)]
+        for run_key, (true_class, margin) in stored.items():
+            target = results_directory(root, "runs") / run_directory(made_runs[run_key]["config"]).name
+            target.mkdir()
+            np.save(target / "stability_maps.npy", true_class)
+            np.save(target / "margin_maps.npy", margin)
+        key = [{"number": str(number), "experiment": run_key[0], "seed": str(run_key[1]), "image": names[position],
+                "map": kind} for number, (run_key, position, kind) in enumerate(items, 1)]
+        labels = [{"number": str(number), "label": "diffuse-other" if number in AUDIT_NECK else "lung field",
+                   "second_label": "", "note": ""} for number in range(1, len(items) + 1)]
+        labels[0]["label"] = "marker-text"
+
+        def refused(labels, key):
+            """Return True if audit_rows stops on these labels and key."""
+            try:
+                audit_rows(made_runs, made_rows, labels, key, root)
+            except ValueError:
+                return True
+            return False
+
+        unnoted = refused(labels, key)
+        labels[1]["note"] = "empty map"
+        joined = audit_rows(made_runs, made_rows, labels, key, root)
+        labels[2]["note"] = "empty map"
+        wrong_note = refused(labels, key)
+        labels[2]["note"] = ""
+        shifted = refused(labels, [dict(key[0], seed="43")] + key[1:])
+    print(f"  the audit's join: an empty true-class map without the note stops it: {unnoted}; a note on a map that is "
+          f"not empty stops it: {wrong_note}; a key row that differs stops it: {shifted}; with the note, the empty map "
+          f"is flagged: {joined[1]['empty'] and not joined[0]['empty']}; a marker peaking on a dark corner agrees: "
+          f"{joined[0]['peak'] == 'background' and joined[0]['peak_agrees'] is True}")
+
+    model = LOG_LABELS[MODELS[0]]
+
+    def made_overlay(number, label, regime, image, second="", empty=False):
+        """Return a made-up overlay of the first architecture's true-class map of a healthy image."""
+        return {"number": number, "model": model, "augmentation": LOG_LABELS[regime], "class": "NORMAL",
+                "image": image, "map": "true class", "label": label, "second_label": second,
+                "group": audit_group(number, label), "neck": number in AUDIT_NECK, "empty": empty}
+
+    made = [made_overlay(1, "marker-text", "none", "a"), made_overlay(2, "lung field", "strong", "a"),
+            made_overlay(AUDIT_NECK[0], "diffuse-other", "none", "b"), made_overlay(3, "lung field", "strong", "b"),
+            made_overlay(4, "mediastinum-heart", "none", "c", second="device-wires"),
+            made_overlay(5, "lung field", "strong", "c", empty=True)]
+    cells, moves = audit_tallies(made)
+    cell = {(row["model"], row["augmentation"]): row for row in cells
+            if (row["map"], row["class"]) == ("true class", "NORMAL")}
+    before, after = cell[model, LOG_LABELS["none"]], cell[model, LOG_LABELS["strong"]]
+    move = moves[0]
+    print(f"  the tally: groups counted: {before['shortcut place'] == before['neck'] == before['mediastinum-heart'] == 1}; "
+          f"the lung field without and with the neck: {(before['lung_neck_off'], before['lung_neck_as_lung']) == (0, 1)}; "
+          f"a second label counts only as main or second: {(before['shortcut'], before['shortcut_any']) == (1, 2)}; "
+          f"an empty map left out: {(after['maps'], after['empty']) == (2, 1)}; the pairs, none only / strong only / "
+          f"both / neither: {move['pairs'] == 2 and move['shortcut'] == (1, 0, 0, 1)} "
+          f"{move['lung_neck_off'] == (0, 2, 0, 0) and move['lung_neck_as_lung'] == (0, 1, 1, 0)}")
+
+    shares = [0.9, 0.8, 0.1, 0.2, 0.1, 0.0]
+    made = [dict(made_overlay(number, "marker-text" if number <= 3 else "lung field", "none", "a"),
+                 background_share=share, edge_share=0.5) for number, share in enumerate(shares, 1)]
+    lines, readings = audit_check(made)
+    main = next(row for row in lines if (row["group"], row["maps"], row["share"])
+                == ("shortcut place", "both", "background_share"))
+    # 0.9 and 0.8 beat all three lung shares, 0.1 beats 0.0 and ties 0.1: (3 + 3 + 1.5) of 9 pairs.
+    print(f"  the check: AUC {main['auc']:.4f} against 7.5 / 9 with a tie counted half: "
+          f"{abs(main['auc'] - 7.5 / 9) < 1e-12}; read as agreeing, and equal shares as not: "
+          f"{readings['background_share'] == 'agree' and readings['edge_share'] == 'do not agree'}; too few "
+          f"overlays give no reading: {agreement(0.9, (2, 5)) == '-'}; the pooled line agreeing while a map type "
+          f"does not is a disagreement: {audit_reading('agree weakly', ['agree', 'do not agree']) == 'disagreement'} "
+          f"{audit_reading('agree', ['agree', '-']) == 'agree'}")
 
 
 def main():

@@ -3,7 +3,7 @@
 Written by `python -m src.shortcut` from the dataset and `results/runs/`; change the code, not this file.
 The readings were stated in the plan before any model output was related to an image property (NOTES.md
 #15). The intervention (Colab) follows the regions, from the section "The intervention (part 3)" on; the
-audit's labels come later.
+visual audit's labels and their check close it, in "The visual audit (part 4)".
 
 ## Checks
 
@@ -338,3 +338,124 @@ The mean absolute change of each version against the unperturbed image at 224x22
 | validation, PNEUMONIA | 0.0000 | 0.0073 | 0.0071 | 1.02 |
 | test, NORMAL | 0.0000 | 0.0093 | 0.0091 | 1.02 |
 | test, PNEUMONIA | 0.0000 | 0.0075 | 0.0074 | 1.02 |
+
+## The visual audit (part 4)
+
+Six runs - each architecture without and with strong augmentation, 100% data, seed 42 - and the same
+10 subset images in each (5 NORMAL, 5 PNEUMONIA): 60 overlays of the true-class map, then 30 of the
+healthy images' margin maps (61-90), shuffled and numbered (`audit/`). One rater (Yotam) named each
+overlay's main hot spot without the key; he had seen the region statistics and each architecture's map
+style, so the audit is not blind, and some rules were settled while labelling (NOTES.md, the audit's
+labelling row). With one rater there is no kappa. Every overlay's run, labels and region values:
+`audit/overlays.csv`.
+
+**Checks:**
+
+- `key.csv` equals the code's draw of the audit, overlay for overlay.
+- The overlays noted "empty map" are exactly those whose map is empty: 63, 76, 88 - left out of every count.
+- Every label is one of the seven places; the neck overlays (9, 10, 32, 35, 50, 51, 54, 56) are labelled diffuse-other.
+
+**Groups of the main label:** a *shortcut place* is image edge-background, marker-text, device-wires - the frame, printed markers and attached devices #15 is about. Below the diaphragm is anatomy, not an artefact, so it is a group of its own. *Neck* is the overlays whose main spot is the neck; it overlaps the lungs' tops at 7x7, so the lung field is counted twice - with the neck off the lungs, and as their tops. *Other* is diffuse-other outside the neck.
+
+**True-class maps, NORMAL images** - non-empty overlays per group of the main label (5 images per run):
+
+| Architecture | Regime | Maps | lung field | mediastinum-heart | below the diaphragm | neck | shortcut place | other | On the lung field: neck off / as lung tops | On a shortcut place: main / main or second |
+|---|---|---|---|---|---|---|---|---|---|---|
+| MobileNetV3-Small | None | 5 | 2 | 0 | 0 | 2 | 1 | 0 | 2 / 4 of 5 | 1 / 1 of 5 |
+| MobileNetV3-Small | Strong | 5 | 0 | 0 | 0 | 3 | 1 | 1 | 0 / 3 of 5 | 1 / 1 of 5 |
+| ResNet18 | None | 5 | 2 | 0 | 0 | 1 | 2 | 0 | 2 / 3 of 5 | 2 / 2 of 5 |
+| ResNet18 | Strong | 5 | 2 | 0 | 1 | 1 | 1 | 0 | 2 / 3 of 5 | 1 / 2 of 5 |
+| EfficientNet-B0 | None | 5 | 4 | 1 | 0 | 0 | 0 | 0 | 4 / 4 of 5 | 0 / 0 of 5 |
+| EfficientNet-B0 | Strong | 5 | 3 | 1 | 0 | 1 | 0 | 0 | 3 / 4 of 5 | 0 / 0 of 5 |
+| All | None | 15 | 8 | 1 | 0 | 3 | 3 | 0 | 8 / 11 of 15 | 3 / 3 of 15 |
+| All | Strong | 15 | 5 | 1 | 1 | 5 | 2 | 1 | 5 / 10 of 15 | 2 / 3 of 15 |
+
+**True-class maps, PNEUMONIA images** - non-empty overlays per group of the main label (5 images per run):
+
+| Architecture | Regime | Maps | lung field | mediastinum-heart | below the diaphragm | neck | shortcut place | other | On the lung field: neck off / as lung tops | On a shortcut place: main / main or second |
+|---|---|---|---|---|---|---|---|---|---|---|
+| MobileNetV3-Small | None | 5 | 0 | 0 | 0 | 0 | 5 | 0 | 0 / 0 of 5 | 5 / 5 of 5 |
+| MobileNetV3-Small | Strong | 5 | 0 | 2 | 0 | 0 | 3 | 0 | 0 / 0 of 5 | 3 / 5 of 5 |
+| ResNet18 | None | 5 | 3 | 0 | 0 | 0 | 2 | 0 | 3 / 3 of 5 | 2 / 2 of 5 |
+| ResNet18 | Strong | 5 | 4 | 0 | 0 | 0 | 1 | 0 | 4 / 4 of 5 | 1 / 3 of 5 |
+| EfficientNet-B0 | None | 5 | 0 | 0 | 0 | 0 | 5 | 0 | 0 / 0 of 5 | 5 / 5 of 5 |
+| EfficientNet-B0 | Strong | 5 | 2 | 0 | 0 | 0 | 3 | 0 | 2 / 2 of 5 | 3 / 3 of 5 |
+| All | None | 15 | 3 | 0 | 0 | 0 | 12 | 0 | 3 / 3 of 15 | 12 / 12 of 15 |
+| All | Strong | 15 | 6 | 2 | 0 | 0 | 7 | 0 | 6 / 6 of 15 | 7 / 11 of 15 |
+
+**Margin maps, NORMAL images - the evidence for pneumonia in a healthy image** - non-empty overlays per group of the main label (5 images per run):
+
+| Architecture | Regime | Maps | lung field | mediastinum-heart | below the diaphragm | neck | shortcut place | other | On the lung field: neck off / as lung tops | On a shortcut place: main / main or second |
+|---|---|---|---|---|---|---|---|---|---|---|
+| MobileNetV3-Small | None | 5 | 1 | 0 | 3 | 0 | 1 | 0 | 1 / 1 of 5 | 1 / 1 of 5 |
+| MobileNetV3-Small | Strong | 5 | 1 | 2 | 0 | 0 | 2 | 0 | 1 / 1 of 5 | 2 / 2 of 5 |
+| ResNet18 | None | 5 | 3 | 0 | 1 | 0 | 1 | 0 | 3 / 3 of 5 | 1 / 1 of 5 |
+| ResNet18 | Strong | 3 (2 empty) | 1 | 2 | 0 | 0 | 0 | 0 | 1 / 1 of 3 | 0 / 0 of 3 |
+| EfficientNet-B0 | None | 5 | 0 | 0 | 1 | 0 | 4 | 0 | 0 / 0 of 5 | 4 / 4 of 5 |
+| EfficientNet-B0 | Strong | 4 (1 empty) | 1 | 0 | 0 | 0 | 3 | 0 | 1 / 1 of 4 | 3 / 3 of 4 |
+| All | None | 15 | 4 | 0 | 5 | 0 | 6 | 0 | 4 / 4 of 15 | 6 / 6 of 15 |
+| All | Strong | 12 (3 empty) | 3 | 4 | 0 | 0 | 5 | 0 | 3 / 3 of 12 | 5 / 5 of 12 |
+
+**Augmentation, paired by image** (descriptive): the same image in the none and the strong run of one
+architecture, pooled over the three, both maps non-empty. The pairs are 5 images x 3 architectures, and
+the healthy images return in the margin rows, so they are not independent pairs and no test is given.
+Part 2's strong-none rows are a pointer, not a match: they average all 468 images over 9 cells, both
+seeds and all data sizes (cells consistently up / down, from its tables above).
+
+| Maps, class | Pairs | Shortcut place: none only / strong only / both / neither | Lung field, neck off | Lung field, neck as lung tops | Part 2, strong-none (a pointer, not a match) |
+|---|---|---|---|---|---|
+| true class, NORMAL | 15 | 1 / 0 / 2 / 12 | 5 / 2 / 3 / 5 | 3 / 2 / 8 / 2 | edge 7 up / 0 down of 9; background 6 up / 1 down of 9 |
+| true class, PNEUMONIA | 15 | 6 / 1 / 6 / 2 | 1 / 4 / 2 / 8 | 1 / 4 / 2 / 8 | edge 0 up / 9 down of 9; background 0 up / 7 down of 9 |
+| margin, NORMAL | 12 | 0 / 1 / 4 / 7 | 2 / 1 / 2 / 7 | 2 / 1 / 2 / 7 | edge 0 up / 7 down of 9; background 1 up / 5 down of 9 |
+
+### The check of part 2's statistics (the reading was stated before the key was opened)
+
+Part 2's shares of each non-empty overlay's own map, for the overlays of a group of main labels against
+those on the lung field; the AUC is the chance that an overlay of the group has the higher share, a tie
+counting half. The main line is every shortcut place, pooled over both map types: the labels and a share
+**agree** if its AUC is at least 0.75, **agree weakly** from 0.60, and **do not agree** below; '-' if either group has fewer than 3 overlays. It is also given per map
+type: overlays 61-90 are all margin maps of healthy images, which sit on the edge more whatever their
+label, and 1-60 hold most of the lung-field labels - so if the pooled line agrees while a map type alone
+does not agree, the reading is **disagreement**. The single labels are descriptive: by the labelling
+rules, image edge-background also holds spots on the body around the arms, which are not dark cells, and
+a marker on the dark border is marker-text, so a single label can differ from a share for that alone.
+
+| Group | Maps | Share | Overlays: group / lung field | Median: group / lung field | AUC | Reading |
+|---|---|---|---|---|---|---|
+| shortcut place | both | background cells | 35 / 29 | 0.071 / 0.030 | 0.65 | agree weakly |
+| shortcut place | true class | background cells | 24 / 22 | 0.050 / 0.019 | 0.64 | agree weakly |
+| shortcut place | margin | background cells | 11 / 7 | 0.209 / 0.072 | 0.77 | agree |
+| shortcut place | both | top corners and bottom row | 35 / 29 | 0.242 / 0.082 | 0.85 | agree |
+| shortcut place | true class | top corners and bottom row | 24 / 22 | 0.193 / 0.071 | 0.89 | agree |
+| shortcut place | margin | top corners and bottom row | 11 / 7 | 0.575 / 0.222 | 0.90 | agree |
+| image edge-background | both | background cells | 13 / 29 | 0.153 / 0.030 | 0.65 | agree weakly |
+| marker-text | both | background cells | 14 / 29 | 0.102 / 0.030 | 0.72 | agree weakly |
+| marker-text | both | top corners and bottom row | 14 / 29 | 0.250 / 0.082 | 0.90 | agree |
+| below the diaphragm | both | top corners and bottom row | 6 / 29 | 0.383 / 0.082 | 0.96 | agree |
+
+**The share on background cells: agree weakly. The share on the top corners and bottom row: agree.**
+
+**Where each map peaks, against its label** - the like-for-like check, since the label names the main
+hot spot, the peak. The peak cell's category (a background cell first, then the top corners and bottom
+row, else other) per main label, and whether it is where the label expects it (fixed before the key was
+opened; a marker on a dark corner may read background):
+
+| Main label | Peak: background / edge / other | Expected | Agree |
+|---|---|---|---|
+| lung field | 0 / 1 / 28 | other | 28 of 29 |
+| mediastinum-heart | 1 / 0 / 7 | other | 7 of 8 |
+| image edge-background | 4 / 2 / 7 | background | 4 of 13 |
+| marker-text | 2 / 8 / 4 | background or edge | 10 of 14 |
+| device-wires | 0 / 2 / 6 | - | - |
+| below the diaphragm | 0 / 6 / 0 | edge | 6 of 6 |
+| neck | 0 / 0 / 8 | - | - |
+| diffuse-other | 0 / 0 / 1 | - | - |
+
+Over the labels with an expected peak: 55 of 70 peaks agree.
+
+**Caveats.** The label names the main hot spot - the peak, as the eye sees an overlay scaled to its own
+maximum - while the shares are mass over all 49 cells: a diffuse map peaking on the lung with a quarter
+of its mass on the border is rightly lung field and rightly has a high background share, so a middling
+AUC is expected even when both are right; the peak table is the like-for-like check. The overlays are not
+independent - the same 10 images in six runs of one seed at 100% data - and the rater had seen the
+region statistics, so agreement is two views of one map agreeing, not an independent validation.
