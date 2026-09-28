@@ -215,11 +215,14 @@ Written by `python -m src.analysis` from the files above:
 
 * `summary.md` - the tables to read first: the checks against the results files, then how often each pattern
   holds across the architecture and data-size cells, in each seed and in both; then data size and the operating
-  point (NOTES.md #33) and the architectures compared with each other (NOTES.md #34).
+  point (NOTES.md #33), the architectures compared with each other (NOTES.md #34), and augmentation by data size
+  (NOTES.md #35).
 * `comparisons.csv` - every comparison (augmentation regime, data size, tuned threshold against 0.5, seed 43
-  against seed 42, one architecture against another in the same cell, and the larger model's effect minus the
-  smaller model's) as a paired difference with its 95% interval, one row per metric and seed view. Each
-  comparison also carries the validation metrics and the NORMAL images' margins, without intervals.
+  against seed 42, one architecture against another in the same cell, the larger model's effect minus the
+  smaller model's, and an augmentation effect at 50% or 100% of the data minus the same effect at 20%) as a paired
+  difference with its 95% interval, one row per metric and seed view. In the last kind, `regime by data size`,
+  the `data_size` column holds the two sizes compared, e.g. `100%-20%`. Each comparison also carries the
+  validation metrics and the NORMAL images' margins, without intervals.
 * `runs.csv` - one row per run: errors, stability, empty maps, prediction flips by direction, validation
   metrics, the NORMAL images' margins on validation and test, epochs trained and the best epoch, and one
   diagnostic column (balanced accuracy at a threshold chosen on the test set itself - never a result).

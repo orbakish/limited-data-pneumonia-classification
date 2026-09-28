@@ -13,8 +13,9 @@ noise, often as large as the effects (section 5).
 
 ## The short version
 
-1. Augmentation - strong augmentation above all - improves the models in every cell of both seeds, and the
-   clearest gain is fewer false alarms.
+1. Augmentation - strong augmentation above all - improves the models in every cell of both seeds, at every data
+   size, and the clearest gain is fewer false alarms. Its ranking gain does not grow when data is scarcer
+   **(to confirm, #35)**.
 2. It does not harm explanation stability. It makes explanations more stable under the rotation it trained on,
    and leaves stability under noise where it was.
 3. More training data did not help on the official test set: the models called more healthy images pneumonia.
@@ -35,8 +36,14 @@ alarms.**
 - Specificity at 0.5 is where it shows: strong vs none +0.088, 9 of 9 in both seeds, strict in 5. Recall hardly
   moves (+0.001), because it is already 0.97-0.997 in every run.
 - EfficientNet-B0 gains the most (+0.029 mild, +0.032 strong), ResNet18 the least (#34).
-- **When - more at 20% than at 100%?** Not answered yet: the regime tables pool the three data sizes. Being
-  computed (#35).
+- **When - more at 20% than at 100%? (to confirm, #35)** Not more when data is scarce. Strong augmentation raises
+  ROC-AUC at every size - in 3 of 3 architectures in both seeds at 20%, 50% and 100% - and the gain does not
+  consistently grow or shrink with more data: only 1 of the 12 paired comparisons (effect at the larger size minus
+  at 20%) is strict, EfficientNet-B0 strong at 100% (+0.023), where the strongly augmented run itself kept
+  improving with more data. What does change with size is the operating point: augmentation's gain in specificity
+  is largest at 100% (strong: +0.079, +0.143, +0.188), because more data pushes the unaugmented models' healthy test
+  images towards the cut-off and augmentation largely prevents it (section 4). `summary.md`, section "Augmentation
+  by data size", lists all 12 comparisons with both seeds' intervals.
 
 ## 2. Does stronger augmentation harm explanation stability?
 
@@ -86,6 +93,10 @@ augmentation.**
   set.
 - Longer training does not explain it (the epochs trained have no direction), and neither does class balance
   (specificity counts NORMAL images only).
+- **Augmentation largely prevents it (#35).** From 20% to 100%, the unaugmented MobileNetV3-Small's and
+  EfficientNet-B0's healthy test images move about +2.2 towards the cut-off, the strongly augmented
+  EfficientNet-B0's -0.09; the specificity comparisons that are strict are all at 100%, where the unaugmented runs
+  change by -0.07 to -0.16 and the augmented ones by -0.05 to +0.02.
 - **Reading (to confirm):** an operating-point shift between the training distribution, which our validation
   set samples, and the official test set, growing with more data. It ties to #15. Figure:
   `results/analysis/analysis_operating_point_shift.png`.
@@ -132,9 +143,8 @@ augmentation.**
 
 ## 7. Still open
 
-- #33 and #34 - Or to confirm the readings above.
-- #35 - the augmentation effect by data size, being computed.
+- #33, #34 and #35 - Or to confirm the readings above.
 - #29 - the perturbation sizes, reviewed together.
-- #15 - the shortcut check, planned after #35.
+- #15 - the shortcut check, planned next.
 - `experiments/experiment_log.md` - the results rows (Or).
 - The report states the change from cosine to Pearson (#30).
