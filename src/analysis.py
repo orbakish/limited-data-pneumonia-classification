@@ -8,8 +8,9 @@ two runs needs both runs scored on the same resampled images. So this module wor
   kept. Each run's small files are gathered beside the scores under results/runs/<ID>_seed<N>/, so
   the archive in the repo holds everything the comparisons read.
 * analyse (locally, CPU, from the archive): every comparison the report draws on - augmentation
-  regime, data size, threshold, seed, and architecture (levels, and how the larger models respond
-  differently) - as a paired difference between two runs, with a 95% patient-group bootstrap
+  regime, data size, threshold, seed, architecture (levels, and how the larger models respond
+  differently), and the regime effect by data size - as a paired difference between two runs, with a
+  95% patient-group bootstrap
   interval, for each seed and for the two seeds together (NOTES.md #32). It writes
   results/analysis/: comparisons.csv, runs.csv, summary.md and six figures.
 
@@ -97,6 +98,15 @@ SHIFT_MEASURES = (
     ("validation_roc_auc", "", "validation ROC-AUC"),
     ("normal_margin_median_val", "", "NORMAL images' median margin, validation"),
     ("normal_margin_median_test", "", "NORMAL images' median margin, test"),
+)
+# NOTES.md #35 keeps ranking, operating point and stability apart. Tuned balanced accuracy is left out: its
+# threshold does not carry over to test (#31, #33), so it would mix the first two.
+SIZE_MEASURES = (
+    ("roc_auc", "", "ROC-AUC"),
+    ("specificity", "", "specificity @0.5"),
+    ("normal_margin_median_test", "", "NORMAL images' median margin, test"),
+    ("stability_gap", "all", "stability gap"),
+    ("stability_gap", "empty_zero", "gap, empty map = 0"),
 )
 
 
@@ -445,13 +455,51 @@ def threshold_differences(key, runs, cache):
 def interaction(larger, smaller):
     """Return {(metric, variant): (difference, per-resample differences, images)}: one effect minus another.
 
-    Both are run_differences results - the same contrast (say 100% minus 20% data) within two
-    architectures. Every run is scored on the same resamples, so the difference of the two effects is
-    paired too: point minus point, and resample minus resample where both have resamples.
+    Both are run_differences results - the same contrast in two settings: within two architectures
+    (say 100% minus 20% data, in the larger and the smaller model), or at two data sizes (say strong
+    minus no augmentation, at the larger size and at 20%). Every run is scored on the same resamples,
+    so the difference of the two effects is paired too: point minus point, and resample minus
+    resample where both have resamples.
     """
     return {key: (larger[key][0] - smaller[key][0],
                   None if larger[key][1] is None else larger[key][1] - smaller[key][1], None)
             for key in larger}
+
+
+def linear(key):
+    """Return whether a (metric, variant) row adds up exactly across runs, so two routes to it must agree.
+
+    A classification, validation or margin row is one number per run. A stability row with an empty map
+    scored 0, and the share of empty maps, average over the same 468 images in every run. The other
+    stability rows keep only the images defined in both runs of a pair, so their differences need not
+    add up.
+    """
+    metric, variant = key
+    return variant in ("", "empty_zero") or metric.startswith("empty_maps")
+
+
+def two_ways(rows):
+    """Return the largest disagreement between each regime-by-data-size row and the data-size rows it must equal.
+
+    A regime-by-data-size row is the regime effect at the larger size minus the same effect at 20%. By
+    arithmetic that is the augmented runs' change with more data minus the unaugmented runs' - two rows
+    that pairs() made on its own, found here by their labels. A new row that paired the wrong runs would
+    therefore disagree with them. Checked on the linear rows, in every view (NOTES.md #35); expected 0 up
+    to float rounding. (Computing both sides from the same runs would not do: the identity holds for any
+    four runs, so it could never catch a wrong pairing.)
+    """
+    changes = {(row["model"], row["contrast"], row["augmentation"], row["metric"], row["variant"], row["view"]):
+               row["difference"] for row in rows if row["kind"] == "data size"}
+    gaps = [0.0]
+    for row in rows:
+        if row["kind"] == "regime by data size" and linear((row["metric"], row["variant"])):
+            # contrast is "<augmented regime>-none"; split("-") cuts it into the two regime names.
+            augmented, unaugmented = row["contrast"].split("-")
+            key = (row["model"], row["data_size"])
+            rest = (row["metric"], row["variant"], row["view"])
+            expected = changes[key + (LOG_LABELS[augmented],) + rest] - changes[key + (LOG_LABELS[unaugmented],) + rest]
+            gaps.append(abs(row["difference"] - expected))
+    return max(gaps)
 
 
 def views(results):
@@ -545,12 +593,30 @@ def interaction_pairs():
                 yield contrast, fixed, smaller_pair, effects[LOG_LABELS[larger], contrast, held]
 
 
+def regime_size_pairs():
+    """Yield (contrast, fixed columns, effect at 20%, effect at the larger size) for the regime by data size.
+
+    An effect is a pair of experiment IDs, (unaugmented, augmented), of one architecture at one data
+    size. The comparison is the effect at 50% or 100% minus the same effect at 20% (NOTES.md #35), so
+    the data_size column holds two sizes, e.g. "100%-20%".
+    """
+    ids = experiment_ids()
+    for model in MODELS:
+        for second, first in REGIME_CONTRASTS[:2]:
+            for larger, smaller in SIZE_CONTRASTS:
+                fixed = {"model": LOG_LABELS[model], "data_size": f"{LOG_LABELS[larger]}-{LOG_LABELS[smaller]}",
+                         "augmentation": ""}
+                yield (f"{second}-{first}", fixed, (ids[model, smaller, first], ids[model, smaller, second]),
+                       (ids[model, larger, first], ids[model, larger, second]))
+
+
 def comparisons(runs, cache, arrays, weights):
     """Return every comparison as rows for comparisons.csv, one per comparison, metric and view.
 
-    Regime, data size, threshold, architecture levels and interactions are compared within each seed
-    and then across the two seeds; the seed comparison is each experiment's second seed minus its
-    first. The architecture kinds come last, so the rows of the others keep their order.
+    Regime, data size, threshold, architecture levels, interactions and the regime by data size are
+    compared within each seed and then across the two seeds; the seed comparison is each experiment's
+    second seed minus its first. The kinds added later come last, so the rows of the others keep their
+    order.
     """
     rows = []
 
@@ -581,6 +647,12 @@ def comparisons(runs, cache, arrays, weights):
              for seed in SEEDS})
     for contrast, fixed, smaller, larger in interaction_pairs():
         add("interaction", contrast, fixed, "->".join(smaller), "->".join(larger),
+            {f"seed {seed}": interaction(
+                run_differences((larger[0], seed), (larger[1], seed), runs, cache, arrays, weights),
+                run_differences((smaller[0], seed), (smaller[1], seed), runs, cache, arrays, weights))
+             for seed in SEEDS})
+    for contrast, fixed, smaller, larger in regime_size_pairs():
+        add("regime by data size", contrast, fixed, "->".join(smaller), "->".join(larger),
             {f"seed {seed}": interaction(
                 run_differences((larger[0], seed), (larger[1], seed), runs, cache, arrays, weights),
                 run_differences((smaller[0], seed), (smaller[1], seed), runs, cache, arrays, weights))
@@ -807,7 +879,7 @@ def summary(rows, per_run, worst, samples):
             counts = [row["empty_maps_out"] for row in per_run if row["seed"] == seed and row["model"] == LOG_LABELS[model]]
             lines.append(f"| {LOG_LABELS[model]} | {seed} | {min(counts)} | {max(counts)} | "
                          f"{sum(count > 0.1 * 468 for count in counts)}/{len(counts)} |")
-    return "\n".join(lines + follow_up_sections(rows, per_run)) + "\n"
+    return "\n".join(lines + follow_up_sections(rows, per_run) + size_section(rows)) + "\n"
 
 
 def follow_up_sections(rows, per_run):
@@ -858,6 +930,66 @@ def follow_up_sections(rows, per_run):
                                     for kind, contrast in [("regime", effect) for effect in regime_effects]
                                     + [("data size", size) for size in size_contrasts]], KEY_MEASURES)
     return lines
+
+
+def listing_lines(rows):
+    """Return markdown table lines listing every regime-by-data-size comparison, one line per measure.
+
+    Each line gives both seeds with their intervals, the mean and its two flags, and beside them the
+    augmented and the unaugmented runs' own change with more data (the mean of the seeds, from the
+    data-size rows). On the linear rows the comparison is exactly the first change minus the second,
+    so the two show which side moved.
+    """
+    def shown(row):
+        """Return a difference with its interval, or alone where it has none."""
+        if row["low"] is None:
+            return f"{row['difference']:+.4f}"
+        return f"{row['difference']:+.4f} [{row['low']:+.4f}, {row['high']:+.4f}]"
+
+    def flag(value):
+        """Return a consistent or strict flag as yes / no, or "-" where it does not apply."""
+        return "-" if value is None else ("yes" if value else "no")
+
+    lines = ["| Architecture | Effect | Sizes | Measure | Seed 42 | Seed 43 | Mean | Consistent | Strict | "
+             "Augmented runs' change | Unaugmented runs' change |", "|---|---|---|---|---|---|---|---|---|---|---|"]
+    for contrast, fixed, _, _ in regime_size_pairs():
+        # contrast is "<augmented regime>-none"; split("-") cuts it into the two regime names.
+        augmented, unaugmented = contrast.split("-")
+        for metric, variant, name in SIZE_MEASURES:
+            cells = {row["view"]: row for row in select(rows, kind="regime by data size", **fixed, contrast=contrast,
+                                                        metric=metric, variant=variant)}
+            changes = [select(rows, kind="data size", model=fixed["model"], contrast=fixed["data_size"],
+                              augmentation=LOG_LABELS[regime], metric=metric, variant=variant,
+                              view="mean")[0]["difference"] for regime in (augmented, unaugmented)]
+            lines.append(f"| {fixed['model']} | {contrast} | {fixed['data_size']} | {name} | "
+                         f"{shown(cells[f'seed {SEEDS[0]}'])} | {shown(cells[f'seed {SEEDS[1]}'])} | "
+                         f"{shown(cells['mean'])} | {flag(cells['mean']['consistent'])} | "
+                         f"{flag(cells['mean']['strict'])} | {changes[0]:+.4f} | {changes[1]:+.4f} |")
+    return lines
+
+
+def size_section(rows):
+    """Return the summary.md section added for NOTES.md #35: when augmentation helps, by data size."""
+    lines = ["", "## Augmentation by data size (NOTES.md #35)", "",
+             "Each new comparison is the regime effect at the larger data size minus the same effect at 20%, within one",
+             "architecture and paired on the same resamples. By arithmetic it is also the augmented runs' change with more",
+             "data minus the unaugmented runs' change, so a positive value says only that the effect is larger at the",
+             "larger size - it can come from the unaugmented runs losing more, and the last two columns of the second table",
+             "show which side moved. ROC-AUC shows ranking; specificity @0.5 and the NORMAL images' median test margin show",
+             "the operating point, where the shift of NOTES.md #33 enters; the stability gap is given on the images defined",
+             "in both runs and with an empty map scored 0 - the two can differ, because the images kept change with data",
+             "size, most for ResNet18. Tuned balanced accuracy is left out: its threshold does not carry over to test (#31,",
+             "#33). With random signs, a 3-cell row comes out 3 / 0 or 0 / 3 about 1 time in 32, so about one such row in",
+             "the first table is expected by chance, and counts compared across data sizes do not show when augmentation",
+             "helps - only the paired rows of the second table do.", "",
+             "**The regime effect at each data size** (3 cells each: the three architectures):", ""]
+    lines += direction_lines(rows, [(f"{contrast}, {LOG_LABELS[split]}",
+                                     {"kind": "regime", "contrast": contrast, "data_size": LOG_LABELS[split]})
+                                    for contrast in (f"{second}-{first}" for second, first in REGIME_CONTRASTS[:2])
+                                    for split in TRAIN_SPLITS], SIZE_MEASURES)
+    lines += ["", "**The change from 20%, per architecture** - the effect at the larger size minus at 20%; the last two",
+              "columns are the augmented and the unaugmented runs' own change with more data, the mean of the seeds:", ""]
+    return lines + listing_lines(rows)
 
 
 def difference_panels(panels, rows, metric, variant):
@@ -1007,6 +1139,8 @@ def analyse(root=None, samples=BOOTSTRAP_SAMPLES):
     rows = comparisons(runs, cache, arrays, weights)
     per_run = run_rows(runs)
     worst = checks(runs, cache, arrays)
+    # Not a check against the results files, but printed with them: the new rows against the data-size rows.
+    worst["regime by data size, two ways (internal)"] = two_ways(rows)
 
     directory = results_directory(root, "analysis")
     write_csv(rows, directory / "comparisons.csv")
@@ -1141,6 +1275,24 @@ def self_check():
                              "val_logits": known, "val_labels": torch.tensor([0, 0, 0, 0, 0, 1])})
     print(f"  NORMAL margins -3..1: median -1, 90th percentile 0.6: "
           f"{point['normal_margin_median_test'] == -1 and abs(point['normal_margin_p90_test'] - 0.6) < 1e-12}")
+
+    # The regime by data size (2026-09-28, NOTES.md #35).
+    by_size = list(regime_size_pairs())
+    size_ok = all(len({EXPERIMENTS[run_id].model for run_id in small + large}) == 1
+                  and cell(small[0])[0] == cell(small[1])[0] == "train_20" != cell(large[0])[0] == cell(large[1])[0]
+                  and cell(small[0])[1] == cell(large[0])[1] == "none" != cell(small[1])[1] == cell(large[1])[1]
+                  for _, _, small, large in by_size)
+    print(f"  regime by data size: {len(by_size)} comparisons (12), each one architecture and one regime pair, "
+          f"at 20% and at a larger size: {len(by_size) == 12 and size_ok}")
+    # Hand-made rows: the new row equals the augmented minus the unaugmented change, then one that does not.
+    shared = {"model": "M", "data_size": "", "metric": "roc_auc", "variant": "", "view": "seed 42"}
+    made = [dict(shared, kind="data size", contrast="100%-20%", augmentation=LOG_LABELS["strong"], difference=0.05),
+            dict(shared, kind="data size", contrast="100%-20%", augmentation=LOG_LABELS["none"], difference=0.02),
+            dict(shared, kind="regime by data size", contrast="strong-none", data_size="100%-20%", augmentation="",
+                 difference=0.03)]
+    wrong = made[:2] + [dict(made[2], difference=0.04)]
+    print(f"  the two ways agree on a right row and catch a wrong one: "
+          f"{two_ways(made) < EXACT and abs(two_ways(wrong) - 0.01) < EXACT}")
 
 
 def main():
