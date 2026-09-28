@@ -2,7 +2,8 @@
 
 Written by `python -m src.shortcut` from the dataset and `results/runs/`; change the code, not this file.
 The readings were stated in the plan before any model output was related to an image property (NOTES.md
-#15). The intervention (Colab) and the audit are added in later steps.
+#15). The intervention (Colab) follows the regions, from the section "The intervention (part 3)" on; the
+audit's labels come later.
 
 ## Checks
 
@@ -163,3 +164,177 @@ and data size), data-size rows over 9 cells (architecture and regime):
 | 100%-20%, PNEUMONIA | share of the map on background cells | 4 / 0 / 5 | 5 / 0 / 4 | 2 / 2 | 1 / 2 | -0.0044 |
 | 100%-20%, PNEUMONIA | share on the top corners and bottom row | 4 / 0 / 5 | 5 / 0 / 4 | 2 / 2 | 2 / 2 | -0.0087 |
 | 100%-20%, PNEUMONIA | peak on a background cell | 5 / 0 / 4 | 4 / 1 / 4 | 2 / 2 | 0 / 1 | +0.0043 |
+
+## The intervention (part 3)
+
+Every checkpoint scored validation and test again on the Colab T4 that collected the scores
+(`python -m src.shortcut --intervene`, `results/runs/*/shortcut.json`) in four versions: unperturbed,
+re-encoded as a JPEG of quality 75 (the healthy test images' encoding), blurred (Gaussian, sigma 1 px) and
+sharpened (the image plus what the blur removes: the blur's pixel change before the clip to 0-1, less
+after it). *delta* is the median over a class's images of each image's margin change against the
+unperturbed version, in logits; the margin is the PNEUMONIA logit minus the NORMAL logit, and above 0 is
+called pneumonia at 0.5.
+
+**Checks:**
+
+- The images, labels and unperturbed logits of all 54 runs equal the collected ones exactly.
+- The margin maps are read in the stability subset's order, which equals every run's stability records.
+- Test specificity at 0.5 from the unperturbed logits against every results file: largest difference 1.1e-16.
+
+**Encodings in the data** (`covariates.csv`; a luminance-table mean of 29.03 is quality 75, a lower mean a
+higher quality):
+
+| Split, class | Images | Quality 75 | Higher quality | Lower quality |
+|---|---|---|---|---|
+| validation, NORMAL | 202 | 0 | 202 | 0 |
+| validation, PNEUMONIA | 583 | 568 | 15 | 0 |
+| test, NORMAL | 234 | 234 | 0 | 0 |
+| test, PNEUMONIA | 390 | 352 | 38 | 0 |
+
+### The readings, stated before any perturbed score was read (NOTES.md #15)
+
+- **Encoding:** supported if, on validation, delta(NORMAL) >= 1 logit and >= 5 x |delta(PNEUMONIA)| in at least 12 of the 18 runs of every architecture; not supported if delta(NORMAL) < 0.5 in at least 12 of the 18 runs of every architecture; otherwise stated per architecture.
+- **Texture or anything unusual:** sharpening moves the healthy validation images towards NORMAL (delta < 0) in at least 12 of an architecture's 18 runs - texture; towards PNEUMONIA (delta > 0) in at least 12 - anything unusual looks like pneumonia; otherwise neither. A delta of exactly 0 counts for neither. Read on validation, test beside it (decided on 2026-09-28, before any number was seen); a different word on test is a disagreement.
+- An architecture's 18 runs are 9 configurations x 2 seeds; the two seeds of a configuration are not independent, so a count is not 18 independent votes.
+
+**Encoding: not supported**.
+
+| Architecture | Runs | Encoding: >= 1 and >= 5x | Encoding: < 0.5 | Encoding | Sharpen, validation: < 0 / > 0 / = 0 | Validation | Sharpen, test: < 0 / > 0 / = 0 | Test | Blur, validation: > 0 |
+|---|---|---|---|---|---|---|---|---|---|
+| MobileNetV3-Small | 18 | 0 | 18 | not supported | 2 / 16 / 0 | anything unusual | 4 / 14 / 0 | anything unusual | 18 |
+| ResNet18 | 18 | 0 | 18 | not supported | 5 / 13 / 0 | anything unusual | 6 / 12 / 0 | anything unusual | 17 |
+| EfficientNet-B0 | 18 | 0 | 18 | not supported | 1 / 17 / 0 | anything unusual | 2 / 16 / 0 | anything unusual | 17 |
+
+Sharpen, test against validation: the same verdict for every architecture. Pixel change of the healthy validation images: blur 0.0100, sharpen 0.0097 (equal before the clip).
+
+**delta per architecture** - median over its runs (lowest to highest):
+
+| Version | Split, class | MobileNetV3-Small | ResNet18 | EfficientNet-B0 |
+|---|---|---|---|---|
+| reencoded | validation, NORMAL | +0.082 (+0.04 to +0.20) | +0.011 (-0.01 to +0.04) | +0.061 (+0.02 to +0.11) |
+| reencoded | validation, PNEUMONIA | +0.000 (-0.00 to +0.01) | +0.002 (+0.00 to +0.01) | +0.001 (-0.01 to +0.00) |
+| reencoded | test, NORMAL | +0.000 (-0.00 to +0.00) | +0.000 (-0.00 to +0.00) | +0.001 (-0.00 to +0.00) |
+| reencoded | test, PNEUMONIA | +0.000 (-0.00 to +0.00) | +0.000 (-0.00 to +0.00) | -0.001 (-0.01 to +0.01) |
+| blur | validation, NORMAL | +6.253 (+2.89 to +13.80) | +1.615 (-0.29 to +4.60) | +2.141 (-0.16 to +8.21) |
+| blur | validation, PNEUMONIA | +0.659 (-1.02 to +4.68) | -2.546 (-4.98 to -0.15) | -4.155 (-9.69 to -1.53) |
+| blur | test, NORMAL | +4.529 (+1.50 to +7.79) | +0.621 (-1.31 to +4.01) | +0.480 (-1.58 to +4.16) |
+| blur | test, PNEUMONIA | +0.654 (-1.16 to +5.57) | -3.047 (-6.01 to -1.13) | -4.439 (-10.54 to -1.80) |
+| sharpen | validation, NORMAL | +0.822 (-0.28 to +3.80) | +0.358 (-2.07 to +1.92) | +0.879 (-0.03 to +2.17) |
+| sharpen | validation, PNEUMONIA | -0.932 (-3.39 to +0.36) | +1.396 (-1.64 to +4.68) | -1.439 (-3.40 to -0.14) |
+| sharpen | test, NORMAL | +1.049 (-1.13 to +2.10) | +0.448 (-2.53 to +2.00) | +0.515 (-0.13 to +1.76) |
+| sharpen | test, PNEUMONIA | -1.108 (-3.72 to +0.40) | +1.803 (-1.13 to +5.43) | -1.616 (-3.54 to -0.31) |
+
+**What the re-encode alone cannot separate.** The encoding and "anything unusual looks like pneumonia" both predict that re-encoding raises the healthy margins; how far each version moves the pixels tells them apart. Healthy validation images: median delta over an architecture's runs / median pixel change (0-1 units) = delta per unit of pixel change:
+
+| Architecture | reencoded | blur | sharpen |
+|---|---|---|---|
+| MobileNetV3-Small | +0.08 / 0.0008 = +109 | +6.25 / 0.0100 = +627 | +0.82 / 0.0097 = +84 |
+| ResNet18 | +0.01 / 0.0008 = +14 | +1.62 / 0.0100 = +162 | +0.36 / 0.0097 = +37 |
+| EfficientNet-B0 | +0.06 / 0.0008 = +81 | +2.14 / 0.0100 = +215 | +0.88 / 0.0097 = +90 |
+
+- MobileNetV3-Small: the re-encode moves the healthy validation pixels less than the blur (0.0008 against 0.0100) and their margins less (+0.08 against +6.25) - on this comparison, not told apart from a response to any change.
+- ResNet18: the re-encode moves the healthy validation pixels less than the blur (0.0008 against 0.0100) and their margins less (+0.01 against +1.62) - on this comparison, not told apart from a response to any change.
+- EfficientNet-B0: the re-encode moves the healthy validation pixels less than the blur (0.0008 against 0.0100) and their margins less (+0.06 against +2.14) - on this comparison, not told apart from a response to any change.
+
+**How much of the validation-to-test gap in specificity the re-encode reproduces** - descriptive, not a second verdict: a re-encode that moves the healthy margins by 1 logit or more need not carry them across the cut-off when they sit far below it. Specificity at 0.5 on validation (s_v), after the re-encode (s_r) and on test (s_t); false alarms among the healthy images; the share is (s_v - s_r) / (s_v - s_t), not clipped, and '-' when s_v - s_t < 0.05. Median over an architecture's runs (the share: lowest to highest):
+
+| Architecture | s_v | s_r | s_t | False alarms: validation / re-encoded / test | Share | Runs with a share |
+|---|---|---|---|---|---|---|
+| MobileNetV3-Small | 0.985 | 0.985 | 0.688 | 3 / 3 / 73 | +0.000 (+0.00 to +0.04) | 18 of 18 |
+| ResNet18 | 0.985 | 0.980 | 0.626 | 3 / 4 / 88 | +0.000 (-0.02 to +0.02) | 18 of 18 |
+| EfficientNet-B0 | 0.990 | 0.990 | 0.677 | 2 / 2 / 76 | +0.000 (-0.02 to +0.05) | 18 of 18 |
+
+**The test re-encode, a sanity check.** Every healthy test image is already quality 75, so re-encoding changes it little; re-saving a quality-75 file at 75 still quantises it again, so it is not a no-op - read beside its pixel change. Median delta over an architecture's runs:
+
+| | Validation, NORMAL | Test, NORMAL | Test, PNEUMONIA | Test, PNEUMONIA at quality 75 |
+|---|---|---|---|---|
+| MobileNetV3-Small | +0.082 | +0.000 | +0.000 | +0.000 |
+| ResNet18 | +0.011 | +0.000 | +0.000 | -0.000 |
+| EfficientNet-B0 | +0.061 | +0.001 | -0.001 | -0.000 |
+| Pixel change | 0.0008 | 0.0000 | 0.0000 | 0.0000 |
+
+**The healthy validation images' re-encode delta by regime and data size** (descriptive) - seed 42 / seed 43:
+
+| Architecture | Regime | 20% | 50% | 100% |
+|---|---|---|---|---|
+| MobileNetV3-Small | None | +0.06 / +0.09 | +0.13 / +0.15 | +0.20 / +0.12 |
+| MobileNetV3-Small | Mild | +0.05 / +0.06 | +0.08 / +0.11 | +0.07 / +0.09 |
+| MobileNetV3-Small | Strong | +0.06 / +0.09 | +0.04 / +0.06 | +0.09 / +0.06 |
+| ResNet18 | None | +0.01 / +0.04 | -0.01 / +0.04 | +0.03 / +0.01 |
+| ResNet18 | Mild | -0.01 / -0.00 | +0.03 / +0.01 | +0.01 / +0.02 |
+| ResNet18 | Strong | +0.03 / -0.01 | +0.01 / -0.00 | +0.03 / +0.01 |
+| EfficientNet-B0 | None | +0.06 / +0.08 | +0.11 / +0.06 | +0.08 / +0.11 |
+| EfficientNet-B0 | Mild | +0.07 / +0.02 | +0.07 / +0.06 | +0.07 / +0.06 |
+| EfficientNet-B0 | Strong | +0.04 / +0.03 | +0.06 / +0.03 | +0.04 / +0.04 |
+
+**The #33 link** (descriptive): the Spearman correlation of the healthy validation images' re-encode delta with the run's healthy test images' median margin, over a seed's runs; and, closer to #33, of the change of that delta from 20% to 100% with the change of that margin, over the architecture x regime cells.
+
+| Seed | Across the runs | Change from 20% to 100% |
+|---|---|---|
+| 42 | -0.17 (27 runs) | +0.48 (9 cells) |
+| 43 | -0.05 (27 runs) | +0.42 (9 cells) |
+
+## Where the margin maps sit (468 subset images per run)
+
+A margin map explains the PNEUMONIA logit minus the NORMAL logit, so on a healthy image it shows the
+evidence for pneumonia - where a false alarm's evidence sits. Measures as for the true-class maps; median
+over the 18 runs of an architecture (both seeds), empty maps left out and counted.
+
+| Architecture | Class | Share on background cells | Share on top corners and bottom row | Peak on a background cell | Empty maps |
+|---|---|---|---|---|---|
+| MobileNetV3-Small | NORMAL | 0.138 | 0.316 | 0.083 | 1 |
+| MobileNetV3-Small | PNEUMONIA | 0.068 | 0.224 | 0.045 | 0 |
+| ResNet18 | NORMAL | 0.239 | 0.293 | 0.233 | 178 |
+| ResNet18 | PNEUMONIA | 0.096 | 0.136 | 0.017 | 0 |
+| EfficientNet-B0 | NORMAL | 0.152 | 0.534 | 0.144 | 241 |
+| EfficientNet-B0 | PNEUMONIA | 0.068 | 0.352 | 0.047 | 0 |
+
+**Paired comparisons** - second run minus first, per class; regime rows over 9 cells (architecture
+and data size), data-size rows over 9 cells (architecture and regime):
+
+| Comparison | Measure | Seed 42 up / equal / down | Seed 43 up / equal / down | Consistent + / - | Strict + / - | Median mean |
+|---|---|---|---|---|---|---|
+| mild-none, NORMAL | share of the map on background cells | 4 / 0 / 5 | 6 / 0 / 3 | 3 / 2 | 2 / 0 | +0.0024 |
+| mild-none, NORMAL | share on the top corners and bottom row | 0 / 0 / 9 | 0 / 0 / 9 | 0 / 9 | 0 / 7 | -0.0958 |
+| mild-none, NORMAL | peak on a background cell | 4 / 1 / 4 | 5 / 0 / 4 | 3 / 3 | 1 / 0 | +0.0004 |
+| mild-none, PNEUMONIA | share of the map on background cells | 2 / 0 / 7 | 4 / 0 / 5 | 2 / 5 | 2 / 3 | -0.0069 |
+| mild-none, PNEUMONIA | share on the top corners and bottom row | 0 / 0 / 9 | 0 / 0 / 9 | 0 / 9 | 0 / 9 | -0.0713 |
+| mild-none, PNEUMONIA | peak on a background cell | 3 / 1 / 5 | 5 / 2 / 2 | 2 / 1 | 0 / 0 | +0.0000 |
+| strong-none, NORMAL | share of the map on background cells | 2 / 0 / 7 | 3 / 0 / 6 | 1 / 5 | 0 / 4 | -0.0198 |
+| strong-none, NORMAL | share on the top corners and bottom row | 1 / 0 / 8 | 1 / 0 / 8 | 0 / 7 | 0 / 7 | -0.1535 |
+| strong-none, NORMAL | peak on a background cell | 5 / 0 / 4 | 3 / 0 / 6 | 2 / 3 | 0 / 2 | -0.0170 |
+| strong-none, PNEUMONIA | share of the map on background cells | 2 / 0 / 7 | 0 / 0 / 9 | 0 / 7 | 0 / 6 | -0.0228 |
+| strong-none, PNEUMONIA | share on the top corners and bottom row | 0 / 0 / 9 | 0 / 0 / 9 | 0 / 9 | 0 / 9 | -0.0896 |
+| strong-none, PNEUMONIA | peak on a background cell | 1 / 1 / 7 | 1 / 0 / 8 | 0 / 6 | 0 / 3 | -0.0278 |
+| strong-mild, NORMAL | share of the map on background cells | 2 / 0 / 7 | 2 / 0 / 7 | 1 / 6 | 0 / 4 | -0.0367 |
+| strong-mild, NORMAL | share on the top corners and bottom row | 2 / 0 / 7 | 2 / 0 / 7 | 0 / 5 | 0 / 4 | -0.0242 |
+| strong-mild, NORMAL | peak on a background cell | 3 / 0 / 6 | 2 / 1 / 6 | 1 / 5 | 0 / 2 | -0.0598 |
+| strong-mild, PNEUMONIA | share of the map on background cells | 3 / 0 / 6 | 1 / 0 / 8 | 0 / 5 | 0 / 5 | -0.0217 |
+| strong-mild, PNEUMONIA | share on the top corners and bottom row | 2 / 0 / 7 | 0 / 0 / 9 | 0 / 7 | 0 / 6 | -0.0468 |
+| strong-mild, PNEUMONIA | peak on a background cell | 0 / 2 / 7 | 2 / 0 / 7 | 0 / 7 | 0 / 2 | -0.0406 |
+| 50%-20%, NORMAL | share of the map on background cells | 4 / 0 / 5 | 4 / 0 / 5 | 3 / 4 | 2 / 1 | +0.0054 |
+| 50%-20%, NORMAL | share on the top corners and bottom row | 4 / 0 / 5 | 5 / 0 / 4 | 3 / 3 | 1 / 3 | +0.0088 |
+| 50%-20%, NORMAL | peak on a background cell | 5 / 0 / 4 | 3 / 1 / 5 | 3 / 4 | 1 / 2 | +0.0098 |
+| 50%-20%, PNEUMONIA | share of the map on background cells | 5 / 0 / 4 | 5 / 0 / 4 | 2 / 1 | 2 / 1 | -0.0027 |
+| 50%-20%, PNEUMONIA | share on the top corners and bottom row | 5 / 0 / 4 | 4 / 0 / 5 | 0 / 0 | 0 / 0 | +0.0014 |
+| 50%-20%, PNEUMONIA | peak on a background cell | 5 / 0 / 4 | 3 / 1 / 5 | 1 / 1 | 0 / 1 | +0.0000 |
+| 100%-20%, NORMAL | share of the map on background cells | 5 / 0 / 4 | 5 / 0 / 4 | 4 / 3 | 2 / 1 | +0.0024 |
+| 100%-20%, NORMAL | share on the top corners and bottom row | 4 / 0 / 5 | 4 / 0 / 5 | 2 / 3 | 2 / 3 | +0.0162 |
+| 100%-20%, NORMAL | peak on a background cell | 6 / 0 / 3 | 4 / 0 / 5 | 4 / 3 | 3 / 1 | +0.0319 |
+| 100%-20%, PNEUMONIA | share of the map on background cells | 4 / 0 / 5 | 5 / 0 / 4 | 2 / 2 | 1 / 2 | -0.0039 |
+| 100%-20%, PNEUMONIA | share on the top corners and bottom row | 4 / 0 / 5 | 5 / 0 / 4 | 2 / 2 | 2 / 2 | -0.0113 |
+| 100%-20%, PNEUMONIA | peak on a background cell | 5 / 0 / 4 | 3 / 2 / 4 | 1 / 2 | 0 / 2 | +0.0043 |
+
+**The audit's margin overlays:** 3 of the 30 margin maps of its healthy images are empty; at most 7 are allowed (fewer than a quarter), so overlays 61-90 are drawn.
+
+## Pixel change per version
+
+The mean absolute change of each version against the unperturbed image at 224x224, in 0-1 units
+(model-free, `pixel_changes.csv`); median over the images. Blur / sharpen is 1 before the clip to 0-1.
+
+| Split, class | Re-encoded | Blur | Sharpen | Blur / sharpen |
+|---|---|---|---|---|
+| validation, NORMAL | 0.0008 | 0.0100 | 0.0097 | 1.02 |
+| validation, PNEUMONIA | 0.0000 | 0.0073 | 0.0071 | 1.02 |
+| test, NORMAL | 0.0000 | 0.0093 | 0.0091 | 1.02 |
+| test, PNEUMONIA | 0.0000 | 0.0075 | 0.0074 | 1.02 |

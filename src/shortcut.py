@@ -15,10 +15,11 @@ pneumonia ones, are the grainier. Four parts:
   paired comparisons between regimes and data sizes.
 * intervention (Colab, GPU): every checkpoint scores validation and test again in four versions -
   unperturbed (checked against the collected scores first), re-encoded as JPEG quality 75, blurred,
-  and sharpened by the same amount - and gives margin Grad-CAM maps of the stability subset.
+  and sharpened by the same amount - and gives margin Grad-CAM maps of the stability subset. Its
+  readings, where the margin maps sit and each version's pixel change are computed locally, with the rest.
 * audit (manual): numbered overlays for a person to label where each map's hot spot sits.
 
-    python -m src.shortcut                   # covariates and regions -> results/shortcut/
+    python -m src.shortcut                   # covariates, regions, intervention readings -> results/shortcut/
     python -m src.shortcut --audit-sheets    # the audit's numbered sheets and label template
     python -m src.shortcut --intervene --seed 42 --workers 2   # Colab; add --id E01 for one run
     python -m src.shortcut --check           # self-check on synthetic data
@@ -99,12 +100,25 @@ AUDIT_PER_CLASS, AUDIT_PER_SHEET = 5, 12
 AUDIT_LABELS = ("lung field", "mediastinum-heart", "image edge-background", "marker-text", "device-wires",
                 "below the diaphragm", "diffuse-other")
 # The intervention's four versions of every image. The blur is the grain measure's blur, and the sharpen
-# adds back what that blur removes, so the two move the pixels by the same amount in opposite directions.
+# adds back what that blur removes, so the two move the pixels by the same amount in opposite directions -
+# before the clip to 0-1, which trims the sharpen where the image is black or white.
 PASSES = ("unperturbed", "reencoded", "blur", "sharpen")
+VERSIONS = PASSES[1:]
 # The healthy test images' JPEG quality: PIL's luminance table at 75 is theirs, entry for entry (self_check).
 QUALITY = 75
+# That table's mean, as covariates.csv records it for every healthy test image.
+Q75_TABLE = 29.03125
 # The gate's approximate tier: every logit within this of the collected one, and no prediction changed.
 GATE_APPROX = 1e-5
+# The intervention's readings, stated in the plan before any perturbed score was read (NOTES.md #15): the
+# encoding is supported where the healthy validation margins rise by at least ENCODING_RISE logits and
+# ENCODING_RATIO times the pneumonia images' change, not supported where they rise by less than ENCODING_WEAK -
+# in at least VERDICT_RUNS of an architecture's 18 runs (9 configurations x 2 seeds).
+ENCODING_RISE, ENCODING_RATIO, ENCODING_WEAK, VERDICT_RUNS = 1.0, 5.0, 0.5, 12
+# No share of the validation-to-test specificity gap is shown for a gap below this - about 12 of 234 test images.
+MIN_GAP = 0.05
+# The audit's margin overlays are drawn only if fewer than a quarter of their 30 maps are empty: at most 7.
+AUDIT_MAX_EMPTY = 7
 
 
 def unnormalised_transform():
@@ -348,11 +362,12 @@ def map_regions(maps, background):
     return background_share, edge_share, np.where(empty, "empty", category)
 
 
-def region_arrays(runs, rows, root=None):
-    """Return {(ID, seed): per-image region values} of every run's clean true-class maps.
+def region_arrays(runs, rows, root=None, source="true class"):
+    """Return {(ID, seed): per-image region values} of every run's clean true-class maps, or its margin maps.
 
-    The maps are results/runs/<run>/stability_maps.npy[:, 0] - the 468 subset images, in the order
-    of the run's stability records - and each image's background cells come from covariates.csv.
+    The true-class maps are results/runs/<run>/stability_maps.npy[:, 0], the margin maps (source "margin")
+    margin_maps.npy - both the 468 subset images, in the order of the run's stability records - and each
+    image's background cells come from covariates.csv.
     """
     test = {row["image"]: row for row in rows if row["split"] == "test"}
     arrays = {}
@@ -360,7 +375,12 @@ def region_arrays(runs, rows, root=None):
         names = [subset_name(record) for record in run["records"]]
         # Each image's 49 background flags, stored as a string of 0s and 1s, back to a 7x7 grid.
         background = np.array([[cell == "1" for cell in test[name]["background"]] for name in names])
-        maps = np.load(results_directory(root, "runs") / run_directory(run["config"]).name / "stability_maps.npy")[:, 0]
+        folder = results_directory(root, "runs") / run_directory(run["config"]).name
+        if source == "true class":
+            # stability_maps.npy holds five maps per image, the clean one first.
+            maps = np.load(folder / "stability_maps.npy")[:, 0]
+        else:
+            maps = np.load(folder / "margin_maps.npy")
         share, edge, category = map_regions(maps, background.reshape(-1, CELLS, CELLS))
         arrays[key] = {"background_share": share, "edge_share": edge,
                        "peak_background": np.where(category == "empty", np.nan, (category == "background") * 1.0),
@@ -437,7 +457,8 @@ def summary(rows, table, correlations, shifts, per_run, comparisons, difference)
         "",
         "Written by `python -m src.shortcut` from the dataset and `results/runs/`; change the code, not this file.",
         "The readings were stated in the plan before any model output was related to an image property (NOTES.md",
-        "#15). The intervention (Colab) and the audit are added in later steps.",
+        "#15). The intervention (Colab) follows the regions, from the section \"The intervention (part 3)\" on; the",
+        "audit's labels come later.",
         "",
         "## Checks",
         "",
@@ -491,9 +512,16 @@ def summary(rows, table, correlations, shifts, per_run, comparisons, difference)
     lines += ["", "## Where the true-class maps sit (468 subset images per run)", "",
               "Background cells are the 7x7 cells more than half of whose pixels are dark; edge cells are the top",
               "corners and the bottom row. Median over the 18 runs of an architecture (both seeds), empty maps left",
-              "out and counted.", "",
-              "| Architecture | Class | Share on background cells | Share on top corners and bottom row | "
-              "Peak on a background cell | Empty maps |", "|---|---|---|---|---|---|"]
+              "out and counted.", ""]
+    lines += region_lines(per_run, comparisons)
+    return "\n".join(lines) + "\n"
+
+
+def region_lines(per_run, comparisons):
+    """Return the regions' markdown: the median of each measure per architecture and class, then the paired
+    comparisons - the same layout for the true-class maps and the margin maps."""
+    lines = ["| Architecture | Class | Share on background cells | Share on top corners and bottom row | "
+             "Peak on a background cell | Empty maps |", "|---|---|---|---|---|---|"]
     for model in MODELS:
         for name in LABELS:
             own = [row for row in per_run if row["model"] == LOG_LABELS[model] and row["class"] == name]
@@ -507,8 +535,7 @@ def summary(rows, table, correlations, shifts, per_run, comparisons, difference)
               for kind, contrasts in (("regime", ("mild-none", "strong-none", "strong-mild")),
                                       ("data size", ("50%-20%", "100%-20%")))
               for contrast in contrasts for name in LABELS]
-    lines += direction_lines(comparisons, groups, REGION_MEASURES)
-    return "\n".join(lines) + "\n"
+    return lines + direction_lines(comparisons, groups, REGION_MEASURES)
 
 
 def availability_figure(table, path):
@@ -561,7 +588,7 @@ def regions_figure(per_run, measure, ylabel, title, path):
 
 
 def analyse(root=None):
-    """Compute the covariates and the regions and write results/shortcut/; return the summary text."""
+    """Compute the covariates, regions and intervention readings into results/shortcut/; return the summary text."""
     rows = covariates(root)
     # The margins are joined to the covariates by "CLASS/filename", so that name must be unique in a split.
     for split in SPLIT_FILES:
@@ -580,14 +607,42 @@ def analyse(root=None):
     comparisons = region_comparisons(arrays, weights)
     difference = preprocessing_check()
 
+    # The intervention. margin_maps.npy carries no names: intervene wrote it in the subset file's order, and
+    # load_runs has already made every run's stability records share one order - so one comparison covers all.
+    if image_names(load_split("stability_subset")) != names:
+        raise ValueError("the stability subset's order differs from the runs' records; the margin maps cannot be read")
+    results = intervention_rows(runs, rows, root)
+    readings = intervention_readings(results)
+    shares = specificity_shares(results)
+    links = encoding_links(results, runs)
+    pixels = pixel_changes(root)
+    margin_arrays = region_arrays(runs, rows, root, "margin")
+    margin_per_run = region_rows(runs, margin_arrays, weights)
+    margin_comparisons = region_comparisons(margin_arrays, weights)
+    audit_empty = audit_margin_empty(runs, root)
+    # The unperturbed test specificity, recounted from the intervention's logits, against every results file.
+    specificity = max(abs(1 - row["called_pneumonia_before"] / row["images"]
+                          - runs[row["experiment"], row["seed"]]["metrics"]["specificity"])
+                      for row in results if row["split"] == "test" and row["class"] == "NORMAL")
+    checks = (len({(row["experiment"], row["seed"]) for row in results}), specificity)
+
     directory = results_directory(root, "shortcut")
     write_csv(table, directory / "availability.csv")
     write_csv(correlations, directory / "correlations.csv")
     write_csv(shifts, directory / "shift_correlations.csv")
     write_csv(per_run, directory / "regions.csv")
     write_csv(comparisons, directory / "region_comparisons.csv")
+    write_csv(results, directory / "intervention.csv")
+    write_csv(margin_per_run, directory / "margin_regions.csv")
+    write_csv(margin_comparisons, directory / "margin_region_comparisons.csv")
     text = summary(rows, table, correlations, shifts, per_run, comparisons, difference)
+    text += intervention_summary(rows, results, readings, shares, links, pixels, margin_per_run, margin_comparisons,
+                                 audit_empty, checks)
     (directory / "summary.md").write_text(text, encoding="utf-8")
+    intervention_figure(results, directory / "shortcut_intervention.png")
+    regions_figure(margin_per_run, "edge_share", "share of the margin map\non the top corners and bottom row",
+                   "Where the margin Grad-CAM maps sit: their share on the top corners and bottom row, both seeds",
+                   directory / "shortcut_margin_regions_edge.png")
     availability_figure(table, directory / "shortcut_availability.png")
     regions_figure(per_run, "background_share", "share of the map\non background cells",
                    "Where the true-class Grad-CAM maps sit: their share on the image's background cells, both seeds",
@@ -596,7 +651,8 @@ def analyse(root=None):
                    "Where the true-class Grad-CAM maps sit: their share on the top corners and bottom row, both seeds",
                    directory / "shortcut_regions_edge.png")
     print(f"  preprocessing against the evaluation transform: largest difference {difference:.1e}")
-    print(f"{len(rows)} images, {len(correlations)} correlation rows, {len(per_run)} region rows written to {directory}")
+    print(f"{len(rows)} images, {len(correlations)} correlation rows, {len(per_run)} region rows, {len(results)} "
+          f"intervention rows, {len(margin_per_run)} margin-region rows written to {directory}")
     return text
 
 
@@ -616,12 +672,42 @@ def audit_images(names):
     return chosen
 
 
+def audit_items(names, margin=False):
+    """Return the audit's overlays in sheet order, as (run key, subset position, map).
+
+    First the 60 true-class overlays, shuffled; with margin, then the margin maps of the 5 healthy images in
+    the 6 runs, shuffled by a generator of their own - so overlays 1-60 are the same with or without them.
+    """
+    positions = audit_images(names)
+    items = [(key, position, "true class") for key in audit_runs() for position in positions]
+    # A second seeded generator shuffles the order, so neighbouring overlays are not from one run.
+    random.Random(f"{SEED}:audit order").shuffle(items)
+    if margin:
+        extra = [(key, position, "margin") for key in audit_runs() for position in positions
+                 if names[position].startswith("NORMAL/")]
+        random.Random(f"{SEED}:audit margin order").shuffle(extra)
+        items += extra
+    return items
+
+
+def audit_margin_empty(runs, root=None):
+    """Return (empty, total): how many of the audit's margin maps - its healthy images in its runs - are empty."""
+    names = [subset_name(record) for record in next(iter(runs.values()))["records"]]
+    healthy = [position for position in audit_images(names) if names[position].startswith("NORMAL/")]
+    empty = 0
+    for key in audit_runs():
+        maps = np.load(results_directory(root, "runs") / run_directory(runs[key]["config"]).name / "margin_maps.npy")
+        empty += int((maps[healthy].reshape(len(healthy), -1).max(axis=1) <= 0).sum())
+    return empty, len(healthy) * len(audit_runs())
+
+
 def audit_sheets(root=None):
     """Write the audit's numbered overlay sheets, its key and a label template to results/shortcut/audit/.
 
-    Every overlay pairs the image with its true-class map, scaled to the map's own maximum as in the
-    Grad-CAM examples figure. Nothing on a sheet names the run or the class: which overlay is which
-    is in key.csv, not opened while labelling (NOTES.md #15).
+    Every overlay pairs the image with its map, scaled to the map's own maximum as in the Grad-CAM
+    examples figure: 60 true-class maps, then - if at most AUDIT_MAX_EMPTY of them are empty - the 30
+    margin maps of the healthy images (NOTES.md #15). Nothing on a sheet names the run, the class or
+    the map: which overlay is which is in key.csv, not opened while labelling.
     """
     runs = load_runs(root)
     directory = results_directory(root, "shortcut") / "audit"
@@ -630,11 +716,13 @@ def audit_sheets(root=None):
     positions = audit_images(names)
     dataset = ChestXrayDataset(load_split("stability_subset"), unnormalised_transform())
     pictures = {position: dataset[position][0][0].numpy() for position in positions}
-    items = [(key, position) for key in audit_runs() for position in positions]
-    # A second seeded generator shuffles the order, so neighbouring overlays are not from one run.
-    random.Random(f"{SEED}:audit order").shuffle(items)
-    maps = {key: np.load(results_directory(root, "runs") / run_directory(runs[key]["config"]).name
-                         / "stability_maps.npy")[:, 0] for key in audit_runs()}
+    empty, total = audit_margin_empty(runs, root)
+    items = audit_items(names, margin=empty <= AUDIT_MAX_EMPTY)
+    maps = {}
+    for key in audit_runs():
+        folder = results_directory(root, "runs") / run_directory(runs[key]["config"]).name
+        maps[key, "true class"] = np.load(folder / "stability_maps.npy")[:, 0]
+        maps[key, "margin"] = np.load(folder / "margin_maps.npy")
     key_rows = []
     for start in range(0, len(items), AUDIT_PER_SHEET):
         figure = Figure(figsize=(12.8, 5.4), layout="constrained")
@@ -648,8 +736,8 @@ def audit_sheets(root=None):
                 axes[0].set_axis_off()
                 axes[1].set_axis_off()
                 continue
-            key, position = items[start + slot]
-            cam = maps[key][position]
+            key, position, kind = items[start + slot]
+            cam = maps[key, kind][position]
             axes[0].imshow(pictures[position], cmap="gray", vmin=0, vmax=1)
             axes[1].imshow(pictures[position], cmap="gray", vmin=0, vmax=1)
             heat = upsample(torch.from_numpy(cam[None]))[0].numpy()
@@ -657,7 +745,7 @@ def audit_sheets(root=None):
             axes[0].set_title(f"#{number}", fontsize=9)
             axes[1].set_title("empty map" if cam.max() <= 0 else "", fontsize=7)
             key_rows.append({"number": number, "experiment": key[0], "seed": key[1], "image": names[position],
-                             "map": "true class"})
+                             "map": kind})
         title = f"Shortcut audit - overlays {start + 1} to {min(start + AUDIT_PER_SHEET, len(items))}"
         titled(figure, title)
         save_figure(figure, directory / f"sheet_{start // AUDIT_PER_SHEET + 1}.png", title)
@@ -668,9 +756,10 @@ def audit_sheets(root=None):
         "# Shortcut audit (NOTES.md #15)\n\n"
         "Written by `python -m src.shortcut --audit-sheets`. For each numbered overlay, write the main hot spot's\n"
         "place in `labels.csv` (a copy of `labels_template.csv`), one of: " + ", ".join(AUDIT_LABELS) + ". A\n"
-        "second label is optional. Do not open `key.csv` while labelling: it says which run and image each\n"
-        "overlay is.\n", encoding="utf-8")
-    print(f"{len(items)} overlays on {len(range(0, len(items), AUDIT_PER_SHEET))} sheets written to {directory}")
+        "second label is optional. Label overlays 1-60 first, then any after 60. Do not open `key.csv` while\n"
+        "labelling: it says which run, image and map each overlay is.\n", encoding="utf-8")
+    print(f"{len(items)} overlays on {len(range(0, len(items), AUDIT_PER_SHEET))} sheets written to {directory} "
+          f"({empty} of the {total} margin maps empty; at most {AUDIT_MAX_EMPTY} allowed)")
 
 
 def reencode(image, quality=QUALITY):
@@ -850,9 +939,408 @@ def intervene(seed=SEED, root=None, workers=0, run_ids=None):
     return verdicts
 
 
+def version_changes(before, after, truth, at_q75):
+    """Return {class: measures}: how one version moved the margins of each class's images.
+
+    before and after are (N, 2) logits of the same images, unperturbed and under the version; truth holds their
+    labels and at_q75 flags the images whose original is a quality-75 JPEG, both NumPy arrays. delta is the
+    median over the class's images of each image's margin change - the one estimator every reading uses. The
+    rest is descriptive: the mean change, the change of the class's median margin, delta over the quality-75
+    images only, and how many of the class's images are called PNEUMONIA at 0.5 before and after, and flip.
+    """
+    old, new = margins(before), margins(after)
+    called_before, called = classify(before), classify(after)
+    change = new - old
+    measures = {}
+    for name, index in LABELS.items():
+        keep = truth == index
+        q75 = keep & at_q75
+        measures[name] = {
+            "images": int(keep.sum()), "delta": float(np.median(change[keep])),
+            "mean_change": float(change[keep].mean()),
+            "median_shift": float(np.median(new[keep]) - np.median(old[keep])),
+            "q75_images": int(q75.sum()),
+            "delta_q75": float(np.median(change[q75])) if q75.any() else float("nan"),
+            "called_pneumonia_before": int(called_before[keep].sum()), "called_pneumonia": int(called[keep].sum()),
+            "to_pneumonia": int((keep & (called == 1) & (called_before == 0)).sum()),
+            "to_normal": int((keep & (called == 0) & (called_before == 1)).sum()),
+        }
+    return measures
+
+
+def intervention_rows(runs, rows, root=None):
+    """Return one row per run, split, class and version - version_changes - read from each run's shortcut.json.
+
+    A run whose intervention failed its gate is left out. For the others the images, labels and unperturbed
+    logits must equal the collected ones exactly, and the versions must be the ones this code describes.
+    """
+    at_q75 = {(row["split"], row["image"]): row["quant"] == Q75_TABLE for row in rows}
+    results = []
+    for key, run in runs.items():
+        folder = results_directory(root, "runs") / run_directory(run["config"]).name
+        payload = json.loads((folder / "shortcut.json").read_text(encoding="utf-8"))
+        if payload["gate"] == "FAIL":
+            print(f"  {folder.name}: the intervention failed its gate, so it is left out")
+            continue
+        if (payload["quality"], payload["blur_sigma"], payload["blur_kernel"]) != (QUALITY, GRAIN_SIGMA, GRAIN_KERNEL):
+            raise ValueError(f"{folder.name}: shortcut.json was made with other versions than this code describes")
+        # load_runs keeps the validation scores as val_images, val_labels, val_logits and the test ones unprefixed.
+        for split, prefix in (("val", "val_"), ("test", "")):
+            record, labels = payload[split], run[f"{prefix}labels"]
+            logits = {name: torch.tensor(values, dtype=torch.float32) for name, values in record["logits"].items()}
+            if (record["images"] != run[f"{prefix}images"] or record["labels"] != labels.tolist()
+                    or not torch.equal(logits["unperturbed"], run[f"{prefix}logits"])):
+                raise ValueError(f"{folder.name}: the intervention's {split} images or unperturbed logits differ "
+                                 "from the collected ones")
+            flags = np.array([at_q75[split, image] for image in record["images"]])
+            for version in VERSIONS:
+                changes = version_changes(logits["unperturbed"], logits[version], labels.numpy(), flags)
+                for name, measures in changes.items():
+                    results.append({**run_columns(run), "split": split, "class": name, "version": version,
+                                    **measures})
+    return results
+
+
+def intervention_readings(results):
+    """Return (verdict, {architecture: counts}) by the readings stated in the plan (NOTES.md #15).
+
+    Per architecture, over its runs: "supported" and "weak" count the encoding's two conditions on the healthy
+    validation images' re-encode delta; "sharpen_val" and "sharpen_test" count the healthy images' sharpen
+    delta below, above and exactly at 0; "blur_up" counts blur deltas above 0 on validation. Each architecture
+    gets the words its counts earn; the verdict is "supported" or "not supported" only if every architecture
+    earns it, otherwise "per architecture".
+    """
+    delta = {(row["experiment"], row["seed"], row["split"], row["class"], row["version"]): row["delta"]
+             for row in results}
+    counts = {}
+    for model in MODELS:
+        keys = sorted({(row["experiment"], row["seed"]) for row in results if row["model"] == LOG_LABELS[model]})
+        encoding = [delta[key + ("val", "NORMAL", "reencoded")] for key in keys]
+        control = [delta[key + ("val", "PNEUMONIA", "reencoded")] for key in keys]
+        own = {"runs": len(keys),
+               "supported": sum(rise >= ENCODING_RISE and rise >= ENCODING_RATIO * abs(other)
+                                for rise, other in zip(encoding, control)),
+               "weak": sum(rise < ENCODING_WEAK for rise in encoding),
+               "blur_up": sum(delta[key + ("val", "NORMAL", "blur")] > 0 for key in keys)}
+        own["encoding"] = ("supported" if own["supported"] >= VERDICT_RUNS
+                           else "not supported" if own["weak"] >= VERDICT_RUNS else "neither")
+        for split in ("val", "test"):
+            sharpen = [delta[key + (split, "NORMAL", "sharpen")] for key in keys]
+            below, above = sum(value < 0 for value in sharpen), sum(value > 0 for value in sharpen)
+            own[f"sharpen_{split}"] = (below, above, sum(value == 0 for value in sharpen))
+            own[f"texture_{split}"] = ("texture" if below >= VERDICT_RUNS
+                                       else "anything unusual" if above >= VERDICT_RUNS else "neither")
+        counts[LOG_LABELS[model]] = own
+    words = [own["encoding"] for own in counts.values()]
+    verdict = words[0] if len(set(words)) == 1 and words[0] != "neither" else "per architecture"
+    return verdict, counts
+
+
+def specificity_shares(results):
+    """Return per run the specificity at 0.5 on validation before and after the re-encode and on test, and the share.
+
+    The share of the validation-to-test gap the re-encode reproduces is (s_v - s_r) / (s_v - s_t): None when
+    the gap is below MIN_GAP, and never clipped. Descriptive only - not a second verdict.
+    """
+    both = {}
+    for row in results:
+        if row["class"] == "NORMAL" and row["version"] == "reencoded":
+            both.setdefault((row["model"], row["experiment"], row["seed"]), {})[row["split"]] = row
+    shares = []
+    for (model, experiment, seed), rows in both.items():
+        val, test = rows["val"], rows["test"]
+        s_v = 1 - val["called_pneumonia_before"] / val["images"]
+        s_r = 1 - val["called_pneumonia"] / val["images"]
+        s_t = 1 - test["called_pneumonia_before"] / test["images"]
+        shares.append({"model": model, "experiment": experiment, "seed": seed, "s_v": s_v, "s_r": s_r, "s_t": s_t,
+                       "false_alarms_val": val["called_pneumonia_before"],
+                       "false_alarms_reencoded": val["called_pneumonia"],
+                       "false_alarms_test": test["called_pneumonia_before"],
+                       "share": (s_v - s_r) / (s_v - s_t) if s_v - s_t >= MIN_GAP else None})
+    return shares
+
+
+def encoding_links(results, runs):
+    """Return {seed: (across, paired, runs, cells)}: how the re-encode delta goes with the #33 shift, descriptive.
+
+    Across: the Spearman correlation over a seed's runs of the healthy validation images' re-encode delta with
+    the run's healthy test images' median margin. Paired, closer to #33: over the 9 architecture x regime cells,
+    the change of that delta from 20% to 100% of the data against the change of that median margin.
+    """
+    ids = experiment_ids()
+    delta = {(row["experiment"], row["seed"]): row["delta"] for row in results
+             if row["split"] == "val" and row["class"] == "NORMAL" and row["version"] == "reencoded"}
+    links = {}
+    for seed in SEEDS:
+        keys = [key for key in delta if key[1] == seed]
+        across = spearman([delta[key] for key in keys], [runs[key]["normal_margin_median_test"] for key in keys])
+        cells = [(ids[model, TRAIN_SPLITS[0], regime], ids[model, TRAIN_SPLITS[-1], regime])
+                 for model in MODELS for regime in AUGMENTATIONS]
+        changes = [(delta[large, seed] - delta[small, seed],
+                    runs[large, seed]["normal_margin_median_test"] - runs[small, seed]["normal_margin_median_test"])
+                   for small, large in cells if (small, seed) in delta and (large, seed) in delta]
+        # zip(*changes) turns the list of pairs into two sequences: the delta changes and the margin changes.
+        links[seed] = (across, spearman(*zip(*changes)), len(keys), len(changes))
+    return links
+
+
+def cached_pixel_rows(path, count):
+    """Return the rows of a pixel_changes.csv made with this code's versions and complete, or None."""
+    if not path.exists():
+        return None
+    parameters = {"quality": QUALITY, "blur_sigma": GRAIN_SIGMA, "blur_kernel": GRAIN_KERNEL}
+    rows = read_rows(path, [f"change_{version}" for version in VERSIONS] + list(parameters))
+    if len(rows) == count and all(row[name] == value for row in rows for name, value in parameters.items()):
+        return rows
+    return None
+
+
+def pixel_changes(root=None):
+    """Return one row per validation and test image: each version's mean absolute pixel change, in 0-1 units.
+
+    Model-free, so computed once here rather than per run on Colab. Kept in results/shortcut/pixel_changes.csv
+    with the versions' parameters, and computed again if they or the number of images no longer match.
+    """
+    path = results_directory(root, "shortcut") / "pixel_changes.csv"
+    count = sum(len(load_split(split)) for split in ("val", "test"))
+    rows = cached_pixel_rows(path, count)
+    if rows is not None:
+        return rows
+    rows = []
+    for split in ("val", "test"):
+        dataset = InterventionImages(load_split(split))
+        # iter() makes a one-way cursor over the names; next() takes the next one for each image in turn.
+        names = iter(image_names(dataset.images.paths))
+        # One batch at a time: all four versions of every image at once would take about 1.1 GB.
+        for batch, _ in DataLoader(dataset, batch_size=RECIPE.batch_size):
+            # Each version minus the unperturbed one, averaged over the image's pixels: (batch, 3).
+            changes = (batch[:, 1:] - batch[:, :1]).abs().flatten(2).mean(dim=2)
+            for values in changes:
+                rows.append({"split": split, "image": next(names),
+                             **{f"change_{version}": float(value) for version, value in zip(VERSIONS, values)},
+                             "quality": QUALITY, "blur_sigma": GRAIN_SIGMA, "blur_kernel": GRAIN_KERNEL})
+    write_csv(rows, path)
+    return rows
+
+
+def intervention_summary(rows, results, readings, shares, links, pixels, margin_per_run, margin_comparisons,
+                         audit_empty, checks):
+    """Return the summary.md sections of part 3: the intervention's checks, readings and descriptions, where the
+    margin maps sit, and each version's pixel change."""
+    verdict, counts = readings
+    runs_checked, specificity = checks
+    models = [LOG_LABELS[model] for model in MODELS]
+    groups = [(split, name) for split in ("val", "test") for name in LABELS]
+    split_names = {"val": "validation", "test": "test"}
+    quality_75 = {row["image"] for row in rows if row["split"] in split_names and row["quant"] == Q75_TABLE}
+
+    def values_of(model, split, name, version, column="delta"):
+        """Return one column of an architecture's rows for a split, class and version."""
+        return [row[column] for row in results if row["model"] == model and row["split"] == split
+                and row["class"] == name and row["version"] == version]
+
+    def median_of(model, split, name, version, column="delta"):
+        """Return the median of one column over an architecture's runs."""
+        return float(np.median(values_of(model, split, name, version, column)))
+
+    def pixel(split, name, version, only_q75=False):
+        """Return the median pixel change of one version over a split's images of one class."""
+        return float(np.median([row[f"change_{version}"] for row in pixels if row["split"] == split
+                                and row["image"].startswith(f"{name}/")
+                                and (not only_q75 or row["image"] in quality_75)]))
+
+    lines = ["", "## The intervention (part 3)", "",
+             "Every checkpoint scored validation and test again on the Colab T4 that collected the scores",
+             "(`python -m src.shortcut --intervene`, `results/runs/*/shortcut.json`) in four versions: unperturbed,",
+             f"re-encoded as a JPEG of quality {QUALITY} (the healthy test images' encoding), blurred (Gaussian, sigma "
+             f"{GRAIN_SIGMA:g} px) and",
+             "sharpened (the image plus what the blur removes: the blur's pixel change before the clip to 0-1, less",
+             "after it). *delta* is the median over a class's images of each image's margin change against the",
+             "unperturbed version, in logits; the margin is the PNEUMONIA logit minus the NORMAL logit, and above 0 is",
+             "called pneumonia at 0.5.", "", "**Checks:**", "",
+             f"- The images, labels and unperturbed logits of all {runs_checked} runs equal the collected ones exactly.",
+             "- The margin maps are read in the stability subset's order, which equals every run's stability records.",
+             f"- Test specificity at 0.5 from the unperturbed logits against every results file: largest difference "
+             f"{specificity:.1e}.", "",
+             "**Encodings in the data** (`covariates.csv`; a luminance-table mean of 29.03 is quality 75, a lower mean a",
+             "higher quality):", "",
+             "| Split, class | Images | Quality 75 | Higher quality | Lower quality |", "|---|---|---|---|---|"]
+    for split, name in groups:
+        quants = [row["quant"] for row in rows if row["split"] == split and row["class"] == name]
+        lines.append(f"| {split_names[split]}, {name} | {len(quants)} | {sum(q == Q75_TABLE for q in quants)} | "
+                     f"{sum(q < Q75_TABLE for q in quants)} | {sum(q > Q75_TABLE for q in quants)} |")
+
+    lines += ["", "### The readings, stated before any perturbed score was read (NOTES.md #15)", "",
+              f"- **Encoding:** supported if, on validation, delta(NORMAL) >= {ENCODING_RISE:g} logit and >= "
+              f"{ENCODING_RATIO:g} x |delta(PNEUMONIA)| in at least {VERDICT_RUNS} of the 18 runs of every "
+              f"architecture; not supported if delta(NORMAL) < {ENCODING_WEAK:g} in at least {VERDICT_RUNS} of the "
+              "18 runs of every architecture; otherwise stated per architecture.",
+              f"- **Texture or anything unusual:** sharpening moves the healthy validation images towards NORMAL "
+              f"(delta < 0) in at least {VERDICT_RUNS} of an architecture's 18 runs - texture; towards PNEUMONIA "
+              f"(delta > 0) in at least {VERDICT_RUNS} - anything unusual looks like pneumonia; otherwise neither. A "
+              "delta of exactly 0 counts for neither. Read on validation, test beside it (decided on 2026-09-28, "
+              "before any number was seen); a different word on test is a disagreement.",
+              "- An architecture's 18 runs are 9 configurations x 2 seeds; the two seeds of a configuration are not "
+              "independent, so a count is not 18 independent votes.", "",
+              f"**Encoding: {verdict}**"
+              + ("." if verdict != "per architecture"
+                 else " - " + "; ".join(f"{model}: {counts[model]['encoding']}" for model in models) + "."), "",
+              "| Architecture | Runs | Encoding: >= 1 and >= 5x | Encoding: < 0.5 | Encoding | Sharpen, validation: "
+              "< 0 / > 0 / = 0 | Validation | Sharpen, test: < 0 / > 0 / = 0 | Test | Blur, validation: > 0 |",
+              "|---|---|---|---|---|---|---|---|---|---|"]
+    for model in models:
+        own = counts[model]
+        lines.append(f"| {model} | {own['runs']} | {own['supported']} | {own['weak']} | {own['encoding']} | "
+                     + " / ".join(map(str, own["sharpen_val"])) + f" | {own['texture_val']} | "
+                     + " / ".join(map(str, own["sharpen_test"])) + f" | {own['texture_test']} | {own['blur_up']} |")
+    different = [model for model in models if counts[model]["texture_val"] != counts[model]["texture_test"]]
+    lines += ["", "Sharpen, test against validation: "
+              + (f"a different verdict for {', '.join(different)}." if different
+                 else "the same verdict for every architecture.")
+              + f" Pixel change of the healthy validation images: blur {pixel('val', 'NORMAL', 'blur'):.4f}, sharpen "
+                f"{pixel('val', 'NORMAL', 'sharpen'):.4f} (equal before the clip)."]
+
+    lines += ["", "**delta per architecture** - median over its runs (lowest to highest):", "",
+              "| Version | Split, class | " + " | ".join(models) + " |", "|---|---|" + "---|" * len(models)]
+    for version in VERSIONS:
+        for split, name in groups:
+            lines.append(f"| {version} | {split_names[split]}, {name} | "
+                         + " | ".join(median_line(values_of(model, split, name, version)) for model in models) + " |")
+
+    moved = {version: pixel("val", "NORMAL", version) for version in VERSIONS}
+    lines += ["", "**What the re-encode alone cannot separate.** The encoding and \"anything unusual looks like "
+              "pneumonia\" both predict that re-encoding raises the healthy margins; how far each version moves the "
+              "pixels tells them apart. Healthy validation images: median delta over an architecture's runs / median "
+              "pixel change (0-1 units) = delta per unit of pixel change:", "",
+              "| Architecture | " + " | ".join(VERSIONS) + " |", "|---|" + "---|" * len(VERSIONS)]
+    for model in models:
+        lines.append(f"| {model} | " + " | ".join(
+            f"{median_of(model, 'val', 'NORMAL', version):+.2f} / {moved[version]:.4f} = "
+            f"{median_of(model, 'val', 'NORMAL', version) / moved[version]:+.0f}" for version in VERSIONS) + " |")
+    lines.append("")
+    for model in models:
+        rise, soft = median_of(model, "val", "NORMAL", "reencoded"), median_of(model, "val", "NORMAL", "blur")
+        fewer, further = moved["reencoded"] < moved["blur"], abs(rise) > abs(soft)
+        lines.append(f"- {model}: the re-encode moves the healthy validation pixels {'less' if fewer else 'more'} "
+                     f"than the blur ({moved['reencoded']:.4f} against {moved['blur']:.4f}) and their margins "
+                     f"{'more' if further else 'less'} ({rise:+.2f} against {soft:+.2f}) - "
+                     + ("specific to the encoding." if fewer and further
+                        else "on this comparison, not told apart from a response to any change."))
+
+    lines += ["", "**How much of the validation-to-test gap in specificity the re-encode reproduces** - descriptive, "
+              "not a second verdict: a re-encode that moves the healthy margins by 1 logit or more need not carry "
+              "them across the cut-off when they sit far below it. Specificity at 0.5 on validation (s_v), after the "
+              "re-encode (s_r) and on test (s_t); false alarms among the healthy images; the share is (s_v - s_r) / "
+              f"(s_v - s_t), not clipped, and '-' when s_v - s_t < {MIN_GAP:g}. Median over an architecture's runs "
+              "(the share: lowest to highest):", "",
+              "| Architecture | s_v | s_r | s_t | False alarms: validation / re-encoded / test | Share | Runs with a "
+              "share |", "|---|---|---|---|---|---|---|"]
+    for model in models:
+        own = [row for row in shares if row["model"] == model]
+        valid = [row["share"] for row in own if row["share"] is not None]
+        alarms = " / ".join(f"{np.median([row[column] for row in own]):.0f}"
+                            for column in ("false_alarms_val", "false_alarms_reencoded", "false_alarms_test"))
+        lines.append(f"| {model} | " + " | ".join(f"{np.median([row[column] for row in own]):.3f}"
+                                                  for column in ("s_v", "s_r", "s_t"))
+                     + f" | {alarms} | {median_line(valid)} | {len(valid)} of {len(own)} |")
+
+    lines += ["", "**The test re-encode, a sanity check.** Every healthy test image is already quality 75, so "
+              "re-encoding changes it little; re-saving a quality-75 file at 75 still quantises it again, so it is "
+              "not a no-op - read beside its pixel change. Median delta over an architecture's runs:", "",
+              "| | Validation, NORMAL | Test, NORMAL | Test, PNEUMONIA | Test, PNEUMONIA at quality 75 |",
+              "|---|---|---|---|---|"]
+    for model in models:
+        lines.append(f"| {model} | {median_of(model, 'val', 'NORMAL', 'reencoded'):+.3f} | "
+                     f"{median_of(model, 'test', 'NORMAL', 'reencoded'):+.3f} | "
+                     f"{median_of(model, 'test', 'PNEUMONIA', 'reencoded'):+.3f} | "
+                     f"{median_of(model, 'test', 'PNEUMONIA', 'reencoded', 'delta_q75'):+.3f} |")
+    lines.append(f"| Pixel change | {pixel('val', 'NORMAL', 'reencoded'):.4f} | "
+                 f"{pixel('test', 'NORMAL', 'reencoded'):.4f} | {pixel('test', 'PNEUMONIA', 'reencoded'):.4f} | "
+                 f"{pixel('test', 'PNEUMONIA', 'reencoded', only_q75=True):.4f} |")
+
+    sizes = [LOG_LABELS[split] for split in TRAIN_SPLITS]
+    lookup = {(row["model"], row["augmentation"], row["data_size"], row["seed"]): row["delta"] for row in results
+              if row["split"] == "val" and row["class"] == "NORMAL" and row["version"] == "reencoded"}
+    lines += ["", "**The healthy validation images' re-encode delta by regime and data size** (descriptive) - "
+              "seed 42 / seed 43:", "",
+              "| Architecture | Regime | " + " | ".join(sizes) + " |", "|---|---|" + "---|" * len(sizes)]
+    for model in models:
+        for regime in AUGMENTATIONS:
+            label = LOG_LABELS[regime]
+            lines.append(f"| {model} | {label} | " + " | ".join(
+                " / ".join(f"{lookup[model, label, size, seed]:+.2f}" if (model, label, size, seed) in lookup
+                           else "-" for seed in SEEDS) for size in sizes) + " |")
+    lines += ["", "**The #33 link** (descriptive): the Spearman correlation of the healthy validation images' "
+              "re-encode delta with the run's healthy test images' median margin, over a seed's runs; and, closer to "
+              "#33, of the change of that delta from 20% to 100% with the change of that margin, over the "
+              "architecture x regime cells.", "",
+              "| Seed | Across the runs | Change from 20% to 100% |", "|---|---|---|"]
+    for seed, (across, paired, run_count, cell_count) in links.items():
+        lines.append(f"| {seed} | {across:+.2f} ({run_count} runs) | {paired:+.2f} ({cell_count} cells) |")
+
+    empty, total = audit_empty
+    lines += ["", "## Where the margin maps sit (468 subset images per run)", "",
+              "A margin map explains the PNEUMONIA logit minus the NORMAL logit, so on a healthy image it shows the",
+              "evidence for pneumonia - where a false alarm's evidence sits. Measures as for the true-class maps; median",
+              "over the 18 runs of an architecture (both seeds), empty maps left out and counted.", ""]
+    lines += region_lines(margin_per_run, margin_comparisons)
+    lines += ["", f"**The audit's margin overlays:** {empty} of the {total} margin maps of its healthy images are "
+              f"empty; at most {AUDIT_MAX_EMPTY} are allowed (fewer than a quarter), so "
+              + ("overlays 61-90 are drawn." if empty <= AUDIT_MAX_EMPTY else "no margin overlays are drawn.")]
+
+    lines += ["", "## Pixel change per version", "",
+              "The mean absolute change of each version against the unperturbed image at 224x224, in 0-1 units",
+              "(model-free, `pixel_changes.csv`); median over the images. Blur / sharpen is 1 before the clip to 0-1.", "",
+              "| Split, class | Re-encoded | Blur | Sharpen | Blur / sharpen |", "|---|---|---|---|---|"]
+    for split, name in groups:
+        changes = [pixel(split, name, version) for version in VERSIONS]
+        lines.append(f"| {split_names[split]}, {name} | " + " | ".join(f"{value:.4f}" for value in changes)
+                     + f" | {changes[1] / changes[2]:.2f} |")
+    return "\n".join(lines) + "\n"
+
+
+def intervention_figure(results, path):
+    """Draw every run's delta per version, split, class and architecture, with 0 and the encoding thresholds."""
+    groups = [("val", "NORMAL"), ("val", "PNEUMONIA"), ("test", "NORMAL"), ("test", "PNEUMONIA")]
+    figure = Figure(figsize=(10.8, 8.4), layout="constrained")
+    grid = figure.subplots(len(VERSIONS), len(MODELS), sharey="row", squeeze=False)
+    # Each regime's dots sit a little left or right of their group, so the three do not overlap.
+    offsets = {regime: (index - 1) * 0.22 for index, regime in enumerate(AUGMENTATIONS)}
+    for panels, version in zip(grid, VERSIONS):
+        for panel, model in zip(panels, MODELS):
+            for position, (split, name) in enumerate(groups):
+                for regime in AUGMENTATIONS:
+                    for seed_number, seed in enumerate(SEEDS):
+                        values = [row["delta"] for row in results
+                                  if row["model"] == LOG_LABELS[model] and row["augmentation"] == LOG_LABELS[regime]
+                                  and row["seed"] == seed and row["split"] == split and row["class"] == name
+                                  and row["version"] == version]
+                        colour = REGIME_COLOURS[regime]
+                        panel.plot([position + offsets[regime]] * len(values), values, linestyle="none",
+                                   marker=REGIME_MARKERS[regime], markersize=4.5, color=colour,
+                                   markerfacecolor=colour if seed_number == 0 else "white",
+                                   label=f"{regime}, seed {seed}" if position == 0 else None)
+            panel.axhline(0, color="#6b6b68", linewidth=1)
+            if version == "reencoded":
+                panel.axhline(ENCODING_WEAK, color="#6b6b68", linewidth=0.8, linestyle="--")
+                panel.axhline(ENCODING_RISE, color="#6b6b68", linewidth=0.8, linestyle=":")
+            panel.set_xticks(range(len(groups)), [f"{'val' if split == 'val' else 'test'}\n{name}"
+                                                  for split, name in groups], fontsize=7)
+            panel.set_title(f"{LOG_LABELS[model]} - {version}", fontsize=9)
+            panel.grid(axis="y", alpha=0.25, linewidth=0.6)
+            panel.set_axisbelow(True)
+        panels[0].set_ylabel("delta: median margin\nchange (logits)", fontsize=8)
+    figure.legend(*grid[0][0].get_legend_handles_labels(), ncols=6, fontsize=7, frameon=False,
+                  loc="outside lower center")
+    title = ("The intervention: each run's median margin change per version, split and class (dashed 0.5, dotted 1 "
+             "logit: the encoding thresholds)")
+    titled(figure, title)
+    return save_figure(figure, path, title)
+
+
 def self_check():
-    """Check the regions, the image features, the partial correlation, the audit draw and the intervention's
-    versions and gate on synthetic data."""
+    """Check the regions, the image features, the partial correlation, the audit draw, the intervention's
+    versions and gate, and step 3's readings, shares, margin maps and caches on synthetic data."""
     maps = np.zeros((3, CELLS, CELLS))
     maps[0, 0, 0] = 1.0
     maps[1, 3, 3] = 2.0
@@ -946,6 +1434,78 @@ def self_check():
                               {split: values + 1e-3 for split, values in base.items()})]
     print(f"  the gate: identical logits pass exactly, a 1e-6 drift approximately, a changed prediction or a "
           f"1e-3 drift fails: {verdicts == ['PASS-exact', 'PASS-approx', 'FAIL', 'FAIL']}")
+
+    # Step 3. Raising the PNEUMONIA logit of every healthy image by 2 moves their margins by 2, the others' by 0.
+    truth = np.array([0] * 6 + [1] * 4)
+    before = torch.randn(10, 2, generator=torch.Generator().manual_seed(3))
+    after = before.clone()
+    after[:6, 1] += 2
+    changes = version_changes(before, after, truth, np.zeros(10, dtype=bool))
+    print(f"  a known margin shift of +2 on the healthy images gives delta 2 there and 0 for the others: "
+          f"{abs(changes['NORMAL']['delta'] - 2) < 1e-6 and changes['PNEUMONIA']['delta'] == 0}")
+
+    def readings_for(encoding, control, sharpen):
+        """Return the readings of made-up runs with these healthy / pneumonia re-encode and sharpen deltas."""
+        made = []
+        for model in MODELS:
+            for number, (rise, other, sharp) in enumerate(zip(encoding, control, sharpen)):
+                for split, name, version, value in (("val", "NORMAL", "reencoded", rise),
+                                                    ("val", "PNEUMONIA", "reencoded", other),
+                                                    ("val", "NORMAL", "blur", 0.1), ("val", "NORMAL", "sharpen", sharp),
+                                                    ("test", "NORMAL", "sharpen", sharp)):
+                    made.append({"model": LOG_LABELS[model], "experiment": f"{model}-{number}", "seed": SEED,
+                                 "split": split, "class": name, "version": version, "delta": value})
+        return intervention_readings(made)
+
+    first = LOG_LABELS[MODELS[0]]
+    exact = readings_for([1.0] * 12 + [0.7] * 6, [0.2] * 18, [-0.1] * 11 + [0.0] + [0.1] * 6)
+    short = readings_for([1.0] * 11 + [0.7] * 7, [0.0] * 18, [-0.1] * 12 + [0.1] * 6)
+    ratio = readings_for([1.0] * 18, [0.3] * 18, [0.1] * 18)
+    weak = readings_for([0.4] * 12 + [0.7] * 6, [0.0] * 18, [0.0] * 18)
+    print(f"  the readings: 12 runs at exactly 1 logit and 5x are supported: {exact[0] == 'supported'}; 11 are not "
+          f"(per architecture): {short[0] == 'per architecture' and short[1][first]['encoding'] == 'neither'}; the "
+          f"5x condition failing alone: {ratio[1][first]['supported'] == 0}; 12 runs under 0.5 are not supported: "
+          f"{weak[0] == 'not supported'}; sharpen 11 below / 6 above / 1 at 0 is neither, texture at 12 below, "
+          f"anything unusual at 12 above: {exact[1][first]['sharpen_val'] == (11, 6, 1)} "
+          f"{exact[1][first]['texture_val'] == 'neither' and short[1][first]['texture_val'] == 'texture'} "
+          f"{ratio[1][first]['texture_val'] == 'anything unusual'}")
+
+    def healthy(split, before, after):
+        """Return one made-up healthy re-encode row of 200 images: how many were called PNEUMONIA."""
+        return {"model": first, "experiment": "E01", "seed": SEED, "split": split, "class": "NORMAL",
+                "version": "reencoded", "images": 200, "called_pneumonia_before": before, "called_pneumonia": after}
+
+    shares = [specificity_shares([healthy("val", 0, after), healthy("test", test, test)])[0]["share"]
+              for after, test in ((20, 100), (120, 100), (20, 5))]
+    print(f"  the specificity share: (1 - 0.9) / (1 - 0.5) = 0.2: {abs(shares[0] - 0.2) < 1e-12}; not clipped above "
+          f"1: {abs(shares[1] - 1.2) < 1e-12}; '-' for a gap under {MIN_GAP:g}: {shares[2] is None}")
+
+    with tempfile.TemporaryDirectory() as folder:
+        root = Path(folder)
+        config = get_config("E01", SEED)
+        target = results_directory(root, "runs") / run_directory(config).name
+        target.mkdir()
+        margin, true_class = np.zeros((1, CELLS, CELLS), np.float32), np.zeros((1, 5, CELLS, CELLS), np.float32)
+        margin[0, 0, 0], true_class[0, 0, 3, 3] = 1.0, 1.0
+        np.save(target / "margin_maps.npy", margin)
+        np.save(target / "stability_maps.npy", true_class)
+        made_runs = {("E01", SEED): {"config": config, "records": [{"class": "NORMAL", "image": "a.jpeg"}]}}
+        made_rows = [{"split": "test", "image": "NORMAL/a.jpeg", "background": "0" * CELLS ** 2}]
+        margin_edge = region_arrays(made_runs, made_rows, root, "margin")["E01", SEED]["edge_share"][0]
+        true_edge = region_arrays(made_runs, made_rows, root)["E01", SEED]["edge_share"][0]
+        path = root / "pixel_changes.csv"
+        cached = {"split": "val", "image": "NORMAL/a.jpeg", **{f"change_{version}": 0.1 for version in VERSIONS},
+                  "quality": QUALITY, "blur_sigma": GRAIN_SIGMA, "blur_kernel": GRAIN_KERNEL}
+        write_csv([dict(cached, quality=QUALITY + 5)], path)
+        stale = cached_pixel_rows(path, 1) is None
+        write_csv([cached], path)
+        fresh = cached_pixel_rows(path, 1) is not None and cached_pixel_rows(path, 2) is None
+    print(f"  margin maps read whole, true-class maps as pass 0: {margin_edge == 1 and true_edge == 0}; the pixel "
+          f"cache refused with other versions or another image count, used otherwise: {stale and fresh}")
+    items = audit_items(names, margin=True)
+    print(f"  the audit's margin overlays are appended after the 60 true-class ones, which do not change: "
+          f"{items[:60] == audit_items(names) and len(items) == 90} "
+          f"{all(kind == 'margin' and names[position].startswith('NORMAL/') for _, position, kind in items[60:])}")
 
 
 def main():
