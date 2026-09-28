@@ -235,34 +235,41 @@ def stability_gap_figure(rows, title, path):
     return save_figure(figure, path, title)
 
 
-def f1_figure(rows, directory):
+def f1_figure(rows, directory, suffix=""):
     """Draw test F1 at the validation-chosen threshold, or at 0.5 if any run lacks a tuned value.
 
-    One threshold for the whole figure, so a line never mixes the two (NOTES.md #27).
+    One threshold for the whole figure, so a line never mixes the two (NOTES.md #27). suffix works
+    as in report_figures.
     """
     tuned = bool(rows) and all(row.get("f1_tuned") is not None for row in rows)
     metric, where = ("f1_tuned", "validation-chosen threshold") if tuned else ("f1", "0.5 threshold")
-    return comparison_figure(rows, metric, f"Test F1 at the {where} by data size and augmentation regime",
-                             directory / "summary_f1.png", f"test F1, {where} (95% CI)")
+    tag = suffix.replace("_seed", " - seed ")
+    return comparison_figure(rows, metric, f"Test F1 at the {where} by data size and augmentation regime{tag}",
+                             directory / f"summary_f1{suffix}.png", f"test F1, {where} (95% CI)")
 
 
-def report_figures(rows, root=None):
-    """Draw every cross-experiment figure from the metrics files and return their paths."""
+def report_figures(rows, root=None, suffix=""):
+    """Draw every cross-experiment figure from the metrics files and return their paths.
+
+    suffix goes on every filename - "_seed43" for a second seed, so its summary figures sit beside
+    the default seed's instead of overwriting them - and, as " - seed 43", on every title.
+    """
     directory = figures_directory(root)
+    tag = suffix.replace("_seed", " - seed ")
     drawn = [
-        comparison_figure(rows, "roc_auc", "Test ROC-AUC by data size and augmentation regime",
-                          directory / "summary_roc_auc.png", "test ROC-AUC (95% CI)"),
-        f1_figure(rows, directory),
+        comparison_figure(rows, "roc_auc", f"Test ROC-AUC by data size and augmentation regime{tag}",
+                          directory / f"summary_roc_auc{suffix}.png", "test ROC-AUC (95% CI)"),
+        f1_figure(rows, directory, suffix),
     ]
     # Stability figures need src/stability.py to have filled those fields in.
     if any(row.get("gradcam_stability_out_of_family") is not None for row in rows):
         drawn.append(comparison_figure(
             rows, "gradcam_stability_out_of_family",
-            "Grad-CAM stability under noise (out-of-family) by data size and regime",
-            directory / "summary_stability.png", "Pearson correlation (95% CI)"))
+            f"Grad-CAM stability under noise (out-of-family) by data size and regime{tag}",
+            directory / f"summary_stability{suffix}.png", "Pearson correlation (95% CI)"))
         drawn.append(stability_gap_figure(
-            rows, "Trained-in invariance: in-family minus out-of-family stability",
-            directory / "summary_stability_gap.png"))
+            rows, f"Trained-in invariance: in-family minus out-of-family stability{tag}",
+            directory / f"summary_stability_gap{suffix}.png"))
     return drawn
 
 
@@ -332,12 +339,14 @@ def report(root=None, seed=SEED):
     """Draw the summary figures and write results/summary_table.md from one seed's results files.
 
     Only one seed at a time: a second seed's files would otherwise add duplicate rows. Returns
-    the rows used, so the caller can say how much of the sweep they cover.
+    the rows used, so the caller can say how much of the sweep they cover. A seed other than the
+    default writes its files with a "_seed<N>" suffix, the rule output_stem uses for a run's files.
     """
     rows = [row for row in load_metrics(root) if row.get("seed", SEED) == seed and row["experiment_id"] in EXPERIMENTS]
+    suffix = "" if seed == SEED else f"_seed{seed}"
     if rows:
-        report_figures(rows, root)
-        table = (root or output_root()) / "results" / "summary_table.md"
+        report_figures(rows, root, suffix)
+        table = (root or output_root()) / "results" / f"summary_table{suffix}.md"
         table.write_text(comparison_table(rows) + "\n", encoding="utf-8")
     return rows
 
@@ -363,7 +372,7 @@ def main():
         rows = report(args.output_root, args.seed)
         where = (args.output_root or output_root()) / "results"
         print(f"{len(rows)} of {len(EXPERIMENTS)} experiments found for seed {args.seed}; "
-              f"summary figures and summary_table.md written under {where}" if rows else
+              f"summary figures and table written under {where}" if rows else
               f"no results files for seed {args.seed} under {where}")
         return
 

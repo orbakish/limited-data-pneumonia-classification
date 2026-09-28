@@ -40,6 +40,9 @@ E02_metrics.json
 E27_metrics.json
 ```
 
+A second seed's files carry the seed in their names - `E01_seed43_metrics.json` for seed 43 (NOTES.md #21) -
+so they never overwrite seed 42's.
+
 Each metrics file is written by `src/evaluate.py` and contains (schema agreed in NOTES.md
 question #13; every headline metric also has `_ci_low` and `_ci_high`, omitted here for
 brevity except on `roc_auc`):
@@ -164,6 +167,9 @@ summary_stability.png        Grad-CAM stability under noise (out-of-family)
 summary_stability_gap.png    in-family minus out-of-family: how much invariance is trained in
 ```
 
+Seed 43's figures follow the same rule: `E01_seed43_confusion_matrix.png` and so on per experiment, and
+`summary_roc_auc_seed43.png` and so on for the summaries. `python -m src.figures --report --seed 43` draws them.
+
 In every figure, colour means the augmentation regime - blue `none`, vermillion `mild`, green
 `strong` - and each regime also has its own marker, so the figures stay readable in greyscale
 and for colour-blind readers. Each PNG stores its own title inside the file, and
@@ -180,6 +186,41 @@ After all experiments are completed, the main results should also be summarized 
 * Augmentation strength
 
 This table will be used for the final analysis, report, and presentation.
+
+`python -m src.figures --report` writes it as `results/summary_table.md` (seed 42) and
+`results/summary_table_seed43.md` (seed 43), one line per experiment.
+
+## Per-run files
+
+```text
+results/runs/E01_seed42/ ... results/runs/E27_seed43/
+```
+
+Gathered on Colab by `python -m src.analysis --collect --seed N` (54 folders, one per experiment and seed), so
+the comparisons can be recomputed from the repo alone, without the checkpoints on Drive:
+
+* `scores.json` - every validation and test image's two logits and label, from the run's best checkpoint scored
+  again. `gate` records the check against the results file: all 54 runs are `PASS-exact`.
+* `stability_per_image.json` - per subset image: class, prediction and every perturbed pass's Pearson score.
+* `stability_maps.npy` - the raw 7x7 Grad-CAM maps, 468 images x 5 (clean + 4 perturbed).
+* `validation_metrics.json` and `history.json` - the run's validation pass and its per-epoch training history.
+
+## Analysis
+
+```text
+results/analysis/
+```
+
+Written by `python -m src.analysis` from the files above:
+
+* `summary.md` - the tables to read first: the checks against the results files, then how often each pattern
+  holds across the architecture and data-size cells, in each seed and in both.
+* `comparisons.csv` - every comparison (augmentation regime, data size, tuned threshold against 0.5, seed 43
+  against seed 42) as a paired difference with its 95% interval, one row per metric and seed view.
+* `runs.csv` - one row per run: errors, stability, empty maps, and prediction flips by direction.
+* `analysis_regime_roc_auc.png`, `analysis_regime_gap.png`, `analysis_flips.png` - the three figures.
+* `bootstrap_cache.npz` - every run scored on the 2,000 shared resamples; it saves about 20 minutes when the
+  analysis runs again, and is rebuilt automatically if anything it depends on changes.
 
 ## Important
 

@@ -35,7 +35,9 @@ from sklearn.metrics import (
     roc_auc_score,
 )
 
+from src.augment import build_transform
 from src.config import LOG_LABELS, output_stem
+from src.data import build_dataloader
 from src.paths import output_root, patient_key
 
 BOOTSTRAP_SAMPLES = 2000
@@ -55,6 +57,15 @@ def predict(model, loader, device):
             all_labels.append(labels)
     # torch.cat joins the per-batch tensors end to end into one tensor per quantity.
     return torch.cat(all_logits), torch.cat(all_labels)
+
+
+def score_split(model, split, config, workers, recipe, device):
+    """Run the model over one evaluation split and return (logits, labels, image paths)."""
+    # Evaluation uses preprocessing only - train=False - whatever regime the run trained with.
+    loader = build_dataloader(split, recipe.batch_size, build_transform(config.augmentation, train=False),
+                              num_workers=workers)
+    logits, labels = predict(model, loader, device)
+    return logits, labels, loader.dataset.paths
 
 
 def margins(logits):

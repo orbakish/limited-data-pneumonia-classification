@@ -13,7 +13,9 @@ stability decision and question #7):
 Augmentation trains invariance to specific changes, so an in-family perturbation flatters augmented
 models by construction; the gap between the two families is itself a finding. Every map explains
 the image's true class, so all 27 configs answer the same question on the same image. Similarity is
-the Pearson correlation of the two maps (chance level about 0); cosine is stored beside it.
+the Pearson correlation of the two maps, with cosine stored beside it. Pearson's chance level is about
+0 only for unrelated maps: maps of different same-class images share a layout, so every run records
+its own chance baseline (0.34-0.68 in the seed-42 sweep; NOTES.md, how the stability results are read).
 
     python -m src.stability                      # self-check (CPU, no checkpoint)
     python -m src.stability --write-subset       # draw the fixed test subset once (filenames only)
