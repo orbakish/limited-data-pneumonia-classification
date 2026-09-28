@@ -13,39 +13,49 @@ pneumonia ones, are the grainier. Four parts:
 * regions (local): where each saved true-class Grad-CAM map puts its mass - on the image's
   background cells, in the corners and bottom row - and where it peaks, per run and class, with
   paired comparisons between regimes and data sizes.
-* intervention (Colab, GPU; the next step): every checkpoint scores the images again after a JPEG
-  re-encode, a blur and a matched sharpen, and gives margin Grad-CAM maps.
+* intervention (Colab, GPU): every checkpoint scores validation and test again in four versions -
+  unperturbed (checked against the collected scores first), re-encoded as JPEG quality 75, blurred,
+  and sharpened by the same amount - and gives margin Grad-CAM maps of the stability subset.
 * audit (manual): numbered overlays for a person to label where each map's hot spot sits.
 
     python -m src.shortcut                   # covariates and regions -> results/shortcut/
     python -m src.shortcut --audit-sheets    # the audit's numbered sheets and label template
+    python -m src.shortcut --intervene --seed 42 --workers 2   # Colab; add --id E01 for one run
     python -m src.shortcut --check           # self-check on synthetic data
 """
 
 import argparse
 import csv
+import io
+import json
 import random
+import tempfile
+import time
 from pathlib import Path
 
 import numpy as np
 import torch
+import torchvision
 from matplotlib.figure import Figure
 from PIL import Image
 from scipy.stats import rankdata
 from sklearn.metrics import roc_auc_score
+from torch.utils.data import DataLoader, Dataset
 from torchvision.transforms import v2
 from torchvision.transforms.v2 import functional as TF
 
-from src.analysis import (SEEDS, direction_lines, experiment_ids, interval, load_runs, paired_mean, pairs,
-                          subset_name, subset_weights, views, write_csv)
+from src.analysis import (SEEDS, direction_lines, experiment_ids, image_names, interval, load_runs, paired_mean,
+                          pairs, subset_name, subset_weights, views, write_csv)
 from src.augment import IMAGE_SIZE, IMAGENET_MEAN, IMAGENET_STD, build_transform, resize_steps, tensor_steps
-from src.config import AUGMENTATIONS, LOG_LABELS, MODELS, TRAIN_SPLITS
+from src.config import (AUGMENTATIONS, EXPERIMENTS, LOG_LABELS, MODELS, RECIPE, TRAIN_SPLITS, get_config,
+                        output_stem)
 from src.data import LABELS, ChestXrayDataset
-from src.evaluate import margins, results_directory
+from src.evaluate import classify, margins, results_directory
 from src.figures import REGIME_COLOURS, REGIME_MARKERS, save_figure, titled
-from src.gradcam import upsample
+from src.gradcam import MARGIN, gradcam, upsample
+from src.paths import code_version
 from src.splits import SEED, load_split
-from src.train import run_directory
+from src.train import get_device, load_best, run_directory
 
 # Or's EDA inventory: every image's original width, height and file size (data/eda/README.md).
 INVENTORY = Path(__file__).resolve().parents[1] / "data" / "eda" / "image_inventory.csv"
@@ -88,6 +98,13 @@ REGION_MEASURES = (
 AUDIT_PER_CLASS, AUDIT_PER_SHEET = 5, 12
 AUDIT_LABELS = ("lung field", "mediastinum-heart", "image edge-background", "marker-text", "device-wires",
                 "below the diaphragm", "diffuse-other")
+# The intervention's four versions of every image. The blur is the grain measure's blur, and the sharpen
+# adds back what that blur removes, so the two move the pixels by the same amount in opposite directions.
+PASSES = ("unperturbed", "reencoded", "blur", "sharpen")
+# The healthy test images' JPEG quality: PIL's luminance table at 75 is theirs, entry for entry (self_check).
+QUALITY = 75
+# The gate's approximate tier: every logit within this of the collected one, and no prediction changed.
+GATE_APPROX = 1e-5
 
 
 def unnormalised_transform():
@@ -656,8 +673,186 @@ def audit_sheets(root=None):
     print(f"{len(items)} overlays on {len(range(0, len(items), AUDIT_PER_SHEET))} sheets written to {directory}")
 
 
+def reencode(image, quality=QUALITY):
+    """Return a grayscale PIL image saved as a JPEG of the given quality in memory, then read back."""
+    # BytesIO is an in-memory file: the JPEG is written and read without touching the disk.
+    buffer = io.BytesIO()
+    image.save(buffer, format="JPEG", quality=quality)
+    buffer.seek(0)
+    with Image.open(buffer) as source:
+        return source.convert("L")
+
+
+def blurred(units):
+    """Return 0-1 images blurred as the grain measure blurs them: Gaussian, sigma 1 px, kernel 7."""
+    return TF.gaussian_blur(units, kernel_size=[GRAIN_KERNEL, GRAIN_KERNEL], sigma=[GRAIN_SIGMA, GRAIN_SIGMA])
+
+
+def sharpened(units):
+    """Return 0-1 images unsharp-masked - the image plus what the blur removes - clipped back into 0-1.
+
+    Before the clipping, the change from the image is exactly the blur's change with its sign reversed.
+    """
+    return (2 * units - blurred(units)).clamp(0, 1)
+
+
+class InterventionImages(Dataset):
+    """One split's images in the intervention's four versions: ((4, 224, 224) 0-1 tensor, label) per image.
+
+    Each version is the evaluation preprocessing before normalisation, one grey channel (the three are
+    identical copies). The re-encode happens to the grayscale original, before the resize, as a file saved
+    at another quality would have been read; blur and sharpen act on the 224x224 image.
+    """
+
+    def __init__(self, paths):
+        # No transform: the dataset hands over the grayscale PIL image, so it can be re-encoded first.
+        self.images = ChestXrayDataset(paths)
+        self.transform = unnormalised_transform()
+
+    def __len__(self):
+        """Return the number of images."""
+        return len(self.images)
+
+    def __getitem__(self, index):
+        """Return the four versions of one image and its label."""
+        image, label = self.images[index]
+        # [:1] keeps the first channel with its axis, (1, 224, 224), so the blur sees one image.
+        clean = self.transform(image)[:1]
+        return torch.cat([clean, self.transform(reencode(image))[:1], blurred(clean), sharpened(clean)]), label
+
+
+def intervention_images(split, workers=0):
+    """Return (units (N, 4, 224, 224), labels, names) for one split: every image in the four versions.
+
+    Built once per session and shared by every run - evaluation preprocessing is the same for all 27
+    configurations - so each image is decoded and re-encoded once, not 54 times. About 1.1 GB for
+    validation and test together.
+    """
+    dataset = InterventionImages(load_split(split))
+    loader = DataLoader(dataset, batch_size=RECIPE.batch_size, num_workers=workers)
+    units, labels = [], []
+    for batch, label in loader:
+        units.append(batch)
+        labels.append(label)
+    return torch.cat(units), torch.cat(labels), image_names(dataset.images.paths)
+
+
+def normalised(units):
+    """Return one version of a batch, (N, 224, 224) in 0-1, as the models' input: 3 channels, normalised."""
+    # [:, None] adds the channel axis; expand repeats the grey channel three times without copying.
+    return v2.Normalize(mean=IMAGENET_MEAN, std=IMAGENET_STD)(units[:, None].expand(-1, 3, -1, -1))
+
+
+def pass_logits(model, units, device):
+    """Return a model's logits for one version of a split's images, (N, 224, 224), as a CPU tensor.
+
+    Batched exactly as the evaluation batched them - RECIPE.batch_size images, in split order, normalised
+    on the CPU - because a convolution's result can depend on the batch it runs in, and the unperturbed
+    pass has to reproduce the collected logits.
+    """
+    model.eval()
+    outputs = []
+    with torch.no_grad():
+        for start in range(0, len(units), RECIPE.batch_size):
+            outputs.append(model(normalised(units[start:start + RECIPE.batch_size]).to(device)).cpu())
+    return torch.cat(outputs)
+
+
+def intervention_gate(collected, fresh, threshold):
+    """Return (verdict, largest difference): do the unperturbed logits reproduce the collected ones?
+
+    collected and fresh map each split to its logits. "PASS-exact" when every logit is identical;
+    "PASS-approx" when all are within GATE_APPROX and no prediction differs, at 0.5 or at the run's
+    tuned threshold; "FAIL" otherwise, and that run's perturbed scores are not used.
+    """
+    largest = max(float((fresh[split] - collected[split]).abs().max()) for split in collected)
+    same = all(np.array_equal(classify(fresh[split], cut), classify(collected[split], cut))
+               for split in collected for cut in (0.0, threshold))
+    if largest == 0:
+        return "PASS-exact", largest
+    if largest <= GATE_APPROX and same:
+        return "PASS-approx", largest
+    return "FAIL", largest
+
+
+def margin_maps(model, name, units, device, batch_size=32):
+    """Return the margin Grad-CAM maps (N, 7, 7) of unperturbed images, (N, 224, 224), as float32 NumPy."""
+    maps = [gradcam(model, name, normalised(units[start:start + batch_size]).to(device), MARGIN)[0].cpu()
+            for start in range(0, len(units), batch_size)]
+    return torch.cat(maps).numpy().astype(np.float32)
+
+
+def intervene(seed=SEED, root=None, workers=0, run_ids=None):
+    """Score every experiment of one seed on the four versions of validation and test; return {ID: verdict}.
+
+    Per run, in results/runs/<run>/: margin_maps.npy, the stability subset's margin Grad-CAM maps in the
+    subset's order, and shortcut.json - the gate, the versions, and every image's logits under every
+    pass on both splits. A run whose shortcut.json exists is skipped, so an interrupted session picks up
+    where it stopped; checkpoints, results files and scores.json are only read.
+    """
+    # get_device also switches cuDNN to deterministic mode, as for the evaluation that is reproduced here.
+    device, device_name = get_device()
+    pending, verdicts = [], {}
+    for run_id in run_ids or EXPERIMENTS:
+        name = run_directory(get_config(run_id, seed), root).name
+        if (results_directory(root, "runs") / name / "shortcut.json").exists():
+            print(f"{name}: already done, skipping")
+        else:
+            pending.append(run_id)
+    if not pending:
+        return verdicts
+    started = time.perf_counter()
+    splits = {split: intervention_images(split, workers) for split in ("val", "test")}
+    print(f"  four versions of {sum(len(units) for units, _, _ in splits.values())} images prepared in "
+          f"{(time.perf_counter() - started) / 60:.1f} min", flush=True)
+    test_names = splits["test"][2]
+    subset = [test_names.index(name) for name in image_names(load_split("stability_subset"))]
+    for run_id in pending:
+        started = time.perf_counter()
+        config = get_config(run_id, seed)
+        run_dir = run_directory(config, root)
+        target = results_directory(root, "runs") / run_dir.name
+        collected = json.loads((target / "scores.json").read_text(encoding="utf-8"))
+        for split, (_, labels, names) in splits.items():
+            if names != collected[split]["images"] or labels.tolist() != collected[split]["labels"]:
+                raise ValueError(f"{run_dir.name}: the {split} images differ from the collected ones")
+        metrics_path = results_directory(root) / f"{output_stem(config)}_metrics.json"
+        stored = json.loads(metrics_path.read_text(encoding="utf-8"))
+        model = load_best(config, run_dir, device)
+        logits = {split: {name: pass_logits(model, units[:, index], device) for index, name in enumerate(PASSES)}
+                  for split, (units, _, _) in splits.items()}
+        verdict, largest = intervention_gate(
+            {split: torch.tensor(collected[split]["logits"], dtype=torch.float32) for split in splits},
+            {split: logits[split]["unperturbed"] for split in splits}, stored["threshold_logit_margin"])
+        maps = margin_maps(model, config.model, splits["test"][0][subset, 0], device)
+        empty = int((maps.reshape(len(maps), -1).max(axis=1) <= 0).sum())
+
+        target.mkdir(parents=True, exist_ok=True)
+        np.save(target / "margin_maps.npy", maps)
+        payload = {
+            "experiment_id": run_id, "seed": seed, "gate": verdict, "largest_difference": largest,
+            "code_version": code_version(), "device": device_name, "torch": torch.__version__,
+            "torchvision": torchvision.__version__, "collected_torch": collected["torch"],
+            "passes": list(PASSES), "quality": QUALITY, "blur_sigma": GRAIN_SIGMA, "blur_kernel": GRAIN_KERNEL,
+            "margin_maps_empty": empty,
+            **{split: {"images": names, "labels": labels.tolist(),
+                       "logits": {name: values.tolist() for name, values in logits[split].items()}}
+               for split, (_, labels, names) in splits.items()},
+        }
+        # Written last and by rename: shortcut.json marks a run as done, so it must never exist half written.
+        temporary = target / "shortcut.json.tmp"
+        temporary.write_text(json.dumps(payload), encoding="utf-8")
+        temporary.replace(target / "shortcut.json")
+        verdicts[run_id] = verdict
+        print(f"{run_dir.name}: {verdict} (largest difference {largest:.1e}; torch {torch.__version__} on "
+              f"{device_name}, collected with {collected['torch']}); empty margin maps {empty} of {len(maps)}; "
+              f"{(time.perf_counter() - started) / 60:.1f} min", flush=True)
+    return verdicts
+
+
 def self_check():
-    """Check the regions, the image features, the partial correlation and the audit draw on synthetic data."""
+    """Check the regions, the image features, the partial correlation, the audit draw and the intervention's
+    versions and gate on synthetic data."""
     maps = np.zeros((3, CELLS, CELLS))
     maps[0, 0, 0] = 1.0
     maps[1, 3, 3] = 2.0
@@ -710,18 +905,69 @@ def self_check():
     print(f"  the preprocessing, normalised, is the evaluation transform exactly: {same}; the audit draws 5 of each "
           f"class, the same every time: {len(drawn) == 10 and drawn == audit_images(names)}")
 
+    # The intervention. 29.03125 is the luminance-table mean of every healthy test image (covariates.csv).
+    buffer = io.BytesIO()
+    picture.save(buffer, format="JPEG", quality=QUALITY)
+    buffer.seek(0)
+    with Image.open(buffer) as saved:
+        table = float(np.mean(saved.quantization[0]))
+    again = reencode(picture)
+    lossy = again.size == picture.size and again.mode == "L" and not np.array_equal(np.asarray(again), np.asarray(picture))
+    print(f"  a JPEG at quality {QUALITY} has the healthy test images' table (mean {table:.3f}): "
+          f"{table == 29.03125}; the re-encode keeps size and mode and changes pixels: {lossy}")
+    softer, sharper = blurred(noisy[None])[0], sharpened(noisy[None])[0]
+    grains = [image_features(image)["grain"] for image in (softer, noisy, sharper)]
+    changes = [float((image - noisy).abs().mean()) for image in (softer, sharper)]
+    print(f"  blur lowers the grain and sharpen raises it ({grains[0]:.4f} < {grains[1]:.4f} < {grains[2]:.4f}): "
+          f"{grains[0] < grains[1] < grains[2]}; both change the pixels by the same amount ({changes[0]:.5f}, "
+          f"{changes[1]:.5f}): {abs(changes[0] / changes[1] - 1) < 1e-4}")
+
+    # The four versions of a real file, as InterventionImages reads them.
+    with tempfile.TemporaryDirectory() as folder:
+        path = Path(folder) / "NORMAL" / "synthetic.jpeg"
+        path.parent.mkdir()
+        picture.save(path, quality=95)
+        versions, label = InterventionImages([path])[0]
+        with Image.open(path) as source:
+            reference = build_transform("none", train=False)(source.convert("L"))
+    exact = torch.equal(normalised(versions[None, 0])[0], reference)
+    derived = torch.equal(versions[2:], torch.cat([blurred(versions[:1]), sharpened(versions[:1])]))
+    print(f"  four versions {tuple(versions.shape)}, label {label}; the unperturbed one as model input is the "
+          f"evaluation's exactly: {exact}; blur and sharpen are of that image: {derived}")
+
+    # The gate on made-up logits: image 0 of validation sits 1e-6 above the cut-off.
+    base = {"val": torch.randn(40, 2, generator=torch.Generator().manual_seed(1)),
+            "test": torch.randn(30, 2, generator=torch.Generator().manual_seed(2))}
+    base["val"][0] = torch.tensor([0.0, 1e-6])
+    flipped = {split: values.clone() for split, values in base.items()}
+    flipped["val"][0, 1] = -1e-6
+    verdicts = [intervention_gate(base, fresh, 0.5)[0]
+                for fresh in (base, {split: values + 1e-6 for split, values in base.items()}, flipped,
+                              {split: values + 1e-3 for split, values in base.items()})]
+    print(f"  the gate: identical logits pass exactly, a 1e-6 drift approximately, a changed prediction or a "
+          f"1e-3 drift fails: {verdicts == ['PASS-exact', 'PASS-approx', 'FAIL', 'FAIL']}")
+
 
 def main():
-    """Run the local parts, write the audit sheets, or self-check."""
+    """Run the local parts, write the audit sheets, run the intervention on Colab, or self-check."""
     parser = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
     parser.add_argument("--audit-sheets", action="store_true", help="write the audit's overlay sheets and templates")
+    parser.add_argument("--intervene", action="store_true",
+                        help="score every experiment on the four versions and save margin maps (GPU)")
+    parser.add_argument("--seed", type=int, default=SEED, help=f"which sweep to intervene on (default {SEED})")
+    parser.add_argument("--id", action="append", help="intervene on this experiment only; repeatable")
+    parser.add_argument("--workers", type=int, default=0, help="DataLoader worker processes (default: 0)")
     parser.add_argument("--check", action="store_true", help="self-check on synthetic data")
-    parser.add_argument("--output-root", type=Path, default=None, help="where results/ lives")
+    parser.add_argument("--output-root", type=Path, default=None, help="where checkpoints/ and results/ live")
     args = parser.parse_args()
     if args.check:
         self_check()
     elif args.audit_sheets:
         audit_sheets(args.output_root)
+    elif args.intervene:
+        verdicts = list(intervene(args.seed, args.output_root, args.workers, args.id).values())
+        print(f"seed {args.seed}: " + ", ".join(f"{verdicts.count(kind)} {kind}"
+                                                 for kind in ("PASS-exact", "PASS-approx", "FAIL")))
     else:
         analyse(args.output_root)
 
