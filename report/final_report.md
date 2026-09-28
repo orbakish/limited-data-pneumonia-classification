@@ -72,12 +72,16 @@ Both team members jointly reviewed the experimental design, discussed methodolog
 
 ## Code and Reproducibility
 
-The complete project code is available in the project GitHub repository. The repository contains the training and evaluation pipeline, experiment configurations, dataset analysis scripts, Grad-CAM and stability code, experiment logs, and documentation.
+The complete project code is available in the project GitHub repository. The project is implemented in PyTorch, and the main experiments were run in Google Colab.
 
-Experiments are run in Google Colab using PyTorch. The repository records the software environment and experiment configuration, while datasets, checkpoints, and generated results are stored separately in Google Drive. Each experiment is identified by a fixed experiment ID and random seed, and its configuration and results are saved for later comparison.
+All experiment configurations, metrics, figures, per-image scores, Grad-CAM stability outputs, and analysis results are stored in the repository under `results/`. The dataset and trained checkpoints are stored separately in Google Drive.
 
-The main experiments can be reproduced using the provided experiment entry points: `run_experiment.py` for a single configuration and `run_all.py` for the complete experiment sweep. The official test split is kept unchanged throughout the project.
+Each of the 27 experimental configurations was run with two random seeds, 42 and 43. The code used for the two sweeps is marked with the Git tag `sweep-2026-09` (commit `da739fa`).
 
-GitHub: `<repository link>`
+Individual experiments can be run using `run_experiment.py`, while `run_all.py` runs the complete experiment sweep. The final cross-run analysis can be reproduced using:
+
+`python -m src.analysis`
+
+GitHub: https://github.com/orbakish/limited-data-pneumonia-classification
 
 ## References
