@@ -214,11 +214,18 @@ results/analysis/
 Written by `python -m src.analysis` from the files above:
 
 * `summary.md` - the tables to read first: the checks against the results files, then how often each pattern
-  holds across the architecture and data-size cells, in each seed and in both.
+  holds across the architecture and data-size cells, in each seed and in both; then data size and the operating
+  point (NOTES.md #33) and the architectures compared with each other (NOTES.md #34).
 * `comparisons.csv` - every comparison (augmentation regime, data size, tuned threshold against 0.5, seed 43
-  against seed 42) as a paired difference with its 95% interval, one row per metric and seed view.
-* `runs.csv` - one row per run: errors, stability, empty maps, and prediction flips by direction.
-* `analysis_regime_roc_auc.png`, `analysis_regime_gap.png`, `analysis_flips.png` - the three figures.
+  against seed 42, one architecture against another in the same cell, and the larger model's effect minus the
+  smaller model's) as a paired difference with its 95% interval, one row per metric and seed view. Each
+  comparison also carries the validation metrics and the NORMAL images' margins, without intervals.
+* `runs.csv` - one row per run: errors, stability, empty maps, prediction flips by direction, validation
+  metrics, the NORMAL images' margins on validation and test, epochs trained and the best epoch, and one
+  diagnostic column (balanced accuracy at a threshold chosen on the test set itself - never a result).
+* `analysis_regime_roc_auc.png`, `analysis_regime_gap.png`, `analysis_flips.png`, and
+  `analysis_operating_point_shift.png` with its two rows also as `analysis_operating_point_validation.png` and
+  `analysis_operating_point_test.png` - the six figures.
 * `bootstrap_cache.npz` - every run scored on the 2,000 shared resamples; it saves about 20 minutes when the
   analysis runs again, and is rebuilt automatically if anything it depends on changes.
 
