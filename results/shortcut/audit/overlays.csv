@@ -1,0 +1,91 @@
+number,experiment,seed,model,data_size,augmentation,class,image,map,label,second_label,note,group,neck,empty,background_share,edge_share,peak,expected_peak,peak_agrees
+1,E07,42,MobileNetV3-Small,100%,None,PNEUMONIA,PNEUMONIA/person69_virus_129.jpeg,true class,marker-text,,R letter,shortcut place,False,False,0.20672652125358582,0.25729867815971375,background,background or edge,True
+2,E25,42,EfficientNet-B0,100%,None,NORMAL,NORMAL/NORMAL2-IM-0328-0001.jpeg,true class,mediastinum-heart,,,mediastinum-heart,False,False,0.0,0.027159038931131363,other,other,True
+3,E25,42,EfficientNet-B0,100%,None,PNEUMONIA,PNEUMONIA/person1_virus_9.jpeg,true class,marker-text,image edge-background,,shortcut place,False,False,0.013391262851655483,0.4012455344200134,edge,background or edge,True
+4,E09,42,MobileNetV3-Small,100%,Strong,NORMAL,NORMAL/NORMAL2-IM-0229-0001.jpeg,true class,image edge-background,,out of the patient left ribs under his left arm,shortcut place,False,False,0.023738672956824303,0.08171030133962631,other,background,False
+5,E16,42,ResNet18,100%,None,NORMAL,NORMAL/NORMAL2-IM-0229-0001.jpeg,true class,image edge-background,,out of the patient ribs around his arms,shortcut place,False,False,0.0,0.09976042062044144,other,background,False
+6,E18,42,ResNet18,100%,Strong,PNEUMONIA,PNEUMONIA/person69_virus_129.jpeg,true class,lung field,mediastinum-heart,all his rib cage,lung field,False,False,0.18151690065860748,0.0703173577785492,other,other,True
+7,E25,42,EfficientNet-B0,100%,None,PNEUMONIA,PNEUMONIA/person85_bacteria_421.jpeg,true class,device-wires,image edge-background,also on the R letter,shortcut place,False,False,0.05411648377776146,0.23592908680438995,other,,
+8,E09,42,MobileNetV3-Small,100%,Strong,PNEUMONIA,PNEUMONIA/person1627_virus_2819.jpeg,true class,marker-text,,R letter,shortcut place,False,False,0.055857568979263306,0.1953047662973404,edge,background or edge,True
+9,E07,42,MobileNetV3-Small,100%,None,NORMAL,NORMAL/NORMAL2-IM-0328-0001.jpeg,true class,diffuse-other,,neck,neck,True,False,0.0,0.061635591089725494,other,,
+10,E18,42,ResNet18,100%,Strong,NORMAL,NORMAL/NORMAL2-IM-0092-0001.jpeg,true class,diffuse-other,,neck,neck,True,False,0.046761274337768555,0.08805744349956512,other,,
+11,E07,42,MobileNetV3-Small,100%,None,NORMAL,NORMAL/IM-0091-0001.jpeg,true class,lung field,,top of the lungs close to neck,lung field,False,False,0.0,0.04807508364319801,other,other,True
+12,E27,42,EfficientNet-B0,100%,Strong,NORMAL,NORMAL/NORMAL2-IM-0229-0001.jpeg,true class,mediastinum-heart,below the diaphragm,,mediastinum-heart,False,False,0.0,0.2276362031698227,other,other,True
+13,E07,42,MobileNetV3-Small,100%,None,NORMAL,NORMAL/NORMAL2-IM-0130-0001.jpeg,true class,lung field,diffuse-other,top of lungs and close to neck,lung field,False,False,0.0,0.033675748854875565,other,other,True
+14,E18,42,ResNet18,100%,Strong,NORMAL,NORMAL/NORMAL2-IM-0229-0001.jpeg,true class,image edge-background,diffuse-other,neck and left of it,shortcut place,False,False,0.0,0.19555267691612244,other,background,False
+15,E16,42,ResNet18,100%,None,PNEUMONIA,PNEUMONIA/person85_bacteria_421.jpeg,true class,device-wires,,wires next to left lung,shortcut place,False,False,0.03949158266186714,0.09294688701629639,other,,
+16,E09,42,MobileNetV3-Small,100%,Strong,PNEUMONIA,PNEUMONIA/person110_bacteria_531.jpeg,true class,device-wires,lung field,"mostly wires, some of lungs",shortcut place,False,False,0.0,0.08893211930990219,other,,
+17,E16,42,ResNet18,100%,None,NORMAL,NORMAL/IM-0091-0001.jpeg,true class,marker-text,,R letter,shortcut place,False,False,0.21549959480762482,0.1823788732290268,other,background or edge,False
+18,E25,42,EfficientNet-B0,100%,None,PNEUMONIA,PNEUMONIA/person1627_virus_2819.jpeg,true class,marker-text,,R letter,shortcut place,False,False,0.16041995584964752,0.5203939080238342,edge,background or edge,True
+19,E07,42,MobileNetV3-Small,100%,None,PNEUMONIA,PNEUMONIA/person85_bacteria_421.jpeg,true class,device-wires,,,shortcut place,False,False,0.06598782539367676,0.19939613342285156,edge,,
+20,E18,42,ResNet18,100%,Strong,NORMAL,NORMAL/NORMAL2-IM-0328-0001.jpeg,true class,below the diaphragm,diffuse-other,neck and below lungs,below the diaphragm,False,False,0.0011384758399799466,0.28363391757011414,edge,edge,True
+21,E27,42,EfficientNet-B0,100%,Strong,PNEUMONIA,PNEUMONIA/person1_virus_9.jpeg,true class,lung field,,,lung field,False,False,0.028401857241988182,0.05063389986753464,other,other,True
+22,E18,42,ResNet18,100%,Strong,PNEUMONIA,PNEUMONIA/person1_virus_9.jpeg,true class,lung field,,,lung field,False,False,0.0513332337141037,0.07157151401042938,other,other,True
+23,E25,42,EfficientNet-B0,100%,None,NORMAL,NORMAL/IM-0091-0001.jpeg,true class,lung field,,,lung field,False,False,0.06258861720561981,0.0,other,other,True
+24,E16,42,ResNet18,100%,None,NORMAL,NORMAL/NORMAL2-IM-0092-0001.jpeg,true class,lung field,diffuse-other,lungs and neck,lung field,False,False,0.008787897415459156,0.01755237765610218,other,other,True
+25,E09,42,MobileNetV3-Small,100%,Strong,PNEUMONIA,PNEUMONIA/person69_virus_129.jpeg,true class,mediastinum-heart,marker-text,spine and R letter,mediastinum-heart,False,False,0.1128586083650589,0.1320212185382843,background,other,False
+26,E09,42,MobileNetV3-Small,100%,Strong,PNEUMONIA,PNEUMONIA/person1_virus_9.jpeg,true class,marker-text,below the diaphragm,,shortcut place,False,False,0.015020543709397316,0.18905724585056305,edge,background or edge,True
+27,E18,42,ResNet18,100%,Strong,NORMAL,NORMAL/NORMAL2-IM-0130-0001.jpeg,true class,lung field,mediastinum-heart,,lung field,False,False,0.004088756628334522,0.1042822077870369,other,other,True
+28,E16,42,ResNet18,100%,None,PNEUMONIA,PNEUMONIA/person1627_virus_2819.jpeg,true class,lung field,mediastinum-heart,,lung field,False,False,0.1609015166759491,0.1948201060295105,other,other,True
+29,E18,42,ResNet18,100%,Strong,PNEUMONIA,PNEUMONIA/person110_bacteria_531.jpeg,true class,lung field,device-wires,,lung field,False,False,0.018165692687034607,0.054854098707437515,other,other,True
+30,E27,42,EfficientNet-B0,100%,Strong,NORMAL,NORMAL/IM-0091-0001.jpeg,true class,lung field,below the diaphragm,,lung field,False,False,0.0,0.13655628263950348,other,other,True
+31,E25,42,EfficientNet-B0,100%,None,NORMAL,NORMAL/NORMAL2-IM-0092-0001.jpeg,true class,lung field,diffuse-other,also neck,lung field,False,False,0.0028356786351650953,0.0,other,other,True
+32,E16,42,ResNet18,100%,None,NORMAL,NORMAL/NORMAL2-IM-0328-0001.jpeg,true class,diffuse-other,,neck mostly,neck,True,False,0.0,0.0796811580657959,other,,
+33,E09,42,MobileNetV3-Small,100%,Strong,PNEUMONIA,PNEUMONIA/person85_bacteria_421.jpeg,true class,mediastinum-heart,device-wires,,mediastinum-heart,False,False,0.022860761731863022,0.10682051628828049,other,other,True
+34,E07,42,MobileNetV3-Small,100%,None,NORMAL,NORMAL/NORMAL2-IM-0229-0001.jpeg,true class,marker-text,lung field,,shortcut place,False,False,0.0,0.11848733574151993,other,background or edge,False
+35,E09,42,MobileNetV3-Small,100%,Strong,NORMAL,NORMAL/NORMAL2-IM-0092-0001.jpeg,true class,diffuse-other,below the diaphragm,neck and bottom edges of lungs,neck,True,False,0.04083888232707977,0.21396653354167938,other,,
+36,E27,42,EfficientNet-B0,100%,Strong,NORMAL,NORMAL/NORMAL2-IM-0130-0001.jpeg,true class,lung field,,,lung field,False,False,0.042947281152009964,0.13036422431468964,other,other,True
+37,E18,42,ResNet18,100%,Strong,PNEUMONIA,PNEUMONIA/person1627_virus_2819.jpeg,true class,image edge-background,lung field,,shortcut place,False,False,0.17426837980747223,0.12551924586296082,other,background,False
+38,E27,42,EfficientNet-B0,100%,Strong,PNEUMONIA,PNEUMONIA/person69_virus_129.jpeg,true class,marker-text,,,shortcut place,False,False,0.23479457199573517,0.21804797649383545,other,background or edge,False
+39,E16,42,ResNet18,100%,None,PNEUMONIA,PNEUMONIA/person69_virus_129.jpeg,true class,lung field,mediastinum-heart,,lung field,False,False,0.2024361938238144,0.11395514756441116,other,other,True
+40,E27,42,EfficientNet-B0,100%,Strong,PNEUMONIA,PNEUMONIA/person85_bacteria_421.jpeg,true class,lung field,,bottom of right lung,lung field,False,False,0.030181841924786568,0.05162647366523743,other,other,True
+41,E25,42,EfficientNet-B0,100%,None,PNEUMONIA,PNEUMONIA/person69_virus_129.jpeg,true class,marker-text,lung field,bottom of left lung,shortcut place,False,False,0.35664278268814087,0.5976735353469849,background,background or edge,True
+42,E25,42,EfficientNet-B0,100%,None,PNEUMONIA,PNEUMONIA/person110_bacteria_531.jpeg,true class,device-wires,,,shortcut place,False,False,0.0706816166639328,0.3409421741962433,edge,,
+43,E07,42,MobileNetV3-Small,100%,None,PNEUMONIA,PNEUMONIA/person1_virus_9.jpeg,true class,marker-text,below the diaphragm,,shortcut place,False,False,0.015049559064209461,0.24203632771968842,edge,background or edge,True
+44,E27,42,EfficientNet-B0,100%,Strong,PNEUMONIA,PNEUMONIA/person1627_virus_2819.jpeg,true class,marker-text,,,shortcut place,False,False,0.10617416352033615,0.1734827756881714,other,background or edge,False
+45,E16,42,ResNet18,100%,None,PNEUMONIA,PNEUMONIA/person110_bacteria_531.jpeg,true class,device-wires,below the diaphragm,,shortcut place,False,False,0.04536224901676178,0.16628290712833405,other,,
+46,E25,42,EfficientNet-B0,100%,None,NORMAL,NORMAL/NORMAL2-IM-0229-0001.jpeg,true class,lung field,,,lung field,False,False,0.0,0.012801737524569035,other,other,True
+47,E18,42,ResNet18,100%,Strong,NORMAL,NORMAL/IM-0091-0001.jpeg,true class,lung field,marker-text,"exactly between R letter to top of right lung, like the edge of the neck",lung field,False,False,0.0,0.15667429566383362,other,other,True
+48,E09,42,MobileNetV3-Small,100%,Strong,NORMAL,NORMAL/IM-0091-0001.jpeg,true class,diffuse-other,below the diaphragm,,other,False,False,0.0,0.24384808540344238,other,,
+49,E07,42,MobileNetV3-Small,100%,None,PNEUMONIA,PNEUMONIA/person110_bacteria_531.jpeg,true class,device-wires,below the diaphragm,,shortcut place,False,False,0.011245805770158768,0.19123788177967072,other,,
+50,E09,42,MobileNetV3-Small,100%,Strong,NORMAL,NORMAL/NORMAL2-IM-0130-0001.jpeg,true class,diffuse-other,,spine above the middle of the two lungs,neck,True,False,0.003961438313126564,0.10864689946174622,other,,
+51,E07,42,MobileNetV3-Small,100%,None,NORMAL,NORMAL/NORMAL2-IM-0092-0001.jpeg,true class,diffuse-other,,neck,neck,True,False,0.0176364928483963,0.04495292901992798,other,,
+52,E16,42,ResNet18,100%,None,PNEUMONIA,PNEUMONIA/person1_virus_9.jpeg,true class,lung field,below the diaphragm,left lung and below it,lung field,False,False,0.06008928641676903,0.14791002869606018,other,other,True
+53,E07,42,MobileNetV3-Small,100%,None,PNEUMONIA,PNEUMONIA/person1627_virus_2819.jpeg,true class,marker-text,below the diaphragm,,shortcut place,False,False,0.08808092772960663,0.33032387495040894,edge,background or edge,True
+54,E09,42,MobileNetV3-Small,100%,Strong,NORMAL,NORMAL/NORMAL2-IM-0328-0001.jpeg,true class,diffuse-other,lung field,neck and a little of left lung,neck,True,False,0.0,0.09882578998804092,other,,
+55,E27,42,EfficientNet-B0,100%,Strong,PNEUMONIA,PNEUMONIA/person110_bacteria_531.jpeg,true class,device-wires,lung field,,shortcut place,False,False,0.027678484097123146,0.10952739417552948,other,,
+56,E27,42,EfficientNet-B0,100%,Strong,NORMAL,NORMAL/NORMAL2-IM-0092-0001.jpeg,true class,diffuse-other,,neck,neck,True,False,0.028913579881191254,0.14651620388031006,other,,
+57,E27,42,EfficientNet-B0,100%,Strong,NORMAL,NORMAL/NORMAL2-IM-0328-0001.jpeg,true class,lung field,,,lung field,False,False,0.00811072252690792,0.12193210422992706,other,other,True
+58,E25,42,EfficientNet-B0,100%,None,NORMAL,NORMAL/NORMAL2-IM-0130-0001.jpeg,true class,lung field,,,lung field,False,False,0.01937389001250267,0.0945754274725914,other,other,True
+59,E16,42,ResNet18,100%,None,NORMAL,NORMAL/NORMAL2-IM-0130-0001.jpeg,true class,lung field,,top of the lungs close to neck,lung field,False,False,0.003738675732165575,0.08187206834554672,other,other,True
+60,E18,42,ResNet18,100%,Strong,PNEUMONIA,PNEUMONIA/person85_bacteria_421.jpeg,true class,lung field,device-wires,,lung field,False,False,0.058948151767253876,0.06143936142325401,other,other,True
+61,E09,42,MobileNetV3-Small,100%,Strong,NORMAL,NORMAL/NORMAL2-IM-0130-0001.jpeg,margin,image edge-background,,right hand and out of left lung,shortcut place,False,False,0.0,0.37567803263664246,other,background,False
+62,E09,42,MobileNetV3-Small,100%,Strong,NORMAL,NORMAL/NORMAL2-IM-0328-0001.jpeg,margin,mediastinum-heart,,,mediastinum-heart,False,False,0.02325209230184555,0.058211617171764374,other,other,True
+63,E18,42,ResNet18,100%,Strong,NORMAL,NORMAL/NORMAL2-IM-0092-0001.jpeg,margin,diffuse-other,,empty map,other,False,True,nan,nan,empty,,
+64,E07,42,MobileNetV3-Small,100%,None,NORMAL,NORMAL/NORMAL2-IM-0328-0001.jpeg,margin,below the diaphragm,mediastinum-heart,,below the diaphragm,False,False,0.07191628217697144,0.34674301743507385,edge,edge,True
+65,E18,42,ResNet18,100%,Strong,NORMAL,NORMAL/IM-0091-0001.jpeg,margin,mediastinum-heart,lung field,,mediastinum-heart,False,False,0.052067726850509644,0.11165672540664673,other,other,True
+66,E16,42,ResNet18,100%,None,NORMAL,NORMAL/IM-0091-0001.jpeg,margin,lung field,below the diaphragm,,lung field,False,False,0.047884948551654816,0.2217164933681488,other,other,True
+67,E07,42,MobileNetV3-Small,100%,None,NORMAL,NORMAL/NORMAL2-IM-0229-0001.jpeg,margin,below the diaphragm,mediastinum-heart,,below the diaphragm,False,False,0.023701656609773636,0.36954084038734436,edge,edge,True
+68,E25,42,EfficientNet-B0,100%,None,NORMAL,NORMAL/NORMAL2-IM-0092-0001.jpeg,margin,image edge-background,,,shortcut place,False,False,0.3793080747127533,0.7182411551475525,background,background,True
+69,E27,42,EfficientNet-B0,100%,Strong,NORMAL,NORMAL/IM-0091-0001.jpeg,margin,image edge-background,,,shortcut place,False,False,0.21022900938987732,0.3379249572753906,background,background,True
+70,E25,42,EfficientNet-B0,100%,None,NORMAL,NORMAL/IM-0091-0001.jpeg,margin,image edge-background,,,shortcut place,False,False,0.12156270444393158,0.6696233749389648,edge,background,False
+71,E07,42,MobileNetV3-Small,100%,None,NORMAL,NORMAL/NORMAL2-IM-0130-0001.jpeg,margin,image edge-background,,,shortcut place,False,False,0.32346221804618835,0.28306844830513,other,background,False
+72,E09,42,MobileNetV3-Small,100%,Strong,NORMAL,NORMAL/NORMAL2-IM-0229-0001.jpeg,margin,mediastinum-heart,below the diaphragm,,mediastinum-heart,False,False,0.05033962428569794,0.31041327118873596,other,other,True
+73,E07,42,MobileNetV3-Small,100%,None,NORMAL,NORMAL/NORMAL2-IM-0092-0001.jpeg,margin,below the diaphragm,,,below the diaphragm,False,False,0.2128894031047821,0.39733943343162537,edge,edge,True
+74,E27,42,EfficientNet-B0,100%,Strong,NORMAL,NORMAL/NORMAL2-IM-0328-0001.jpeg,margin,lung field,,,lung field,False,False,0.0,0.0,other,other,True
+75,E25,42,EfficientNet-B0,100%,None,NORMAL,NORMAL/NORMAL2-IM-0130-0001.jpeg,margin,image edge-background,,,shortcut place,False,False,1.0,1.0,background,background,True
+76,E18,42,ResNet18,100%,Strong,NORMAL,NORMAL/NORMAL2-IM-0130-0001.jpeg,margin,diffuse-other,,empty map,other,False,True,nan,nan,empty,,
+77,E27,42,EfficientNet-B0,100%,Strong,NORMAL,NORMAL/NORMAL2-IM-0092-0001.jpeg,margin,image edge-background,,,shortcut place,False,False,0.0,0.5978268384933472,edge,background,False
+78,E09,42,MobileNetV3-Small,100%,Strong,NORMAL,NORMAL/NORMAL2-IM-0092-0001.jpeg,margin,image edge-background,below the diaphragm,,shortcut place,False,False,0.15317602455615997,0.2996736168861389,other,background,False
+79,E07,42,MobileNetV3-Small,100%,None,NORMAL,NORMAL/IM-0091-0001.jpeg,margin,lung field,below the diaphragm,,lung field,False,False,0.11016759276390076,0.3805944621562958,edge,other,False
+80,E25,42,EfficientNet-B0,100%,None,NORMAL,NORMAL/NORMAL2-IM-0229-0001.jpeg,margin,marker-text,,,shortcut place,False,False,0.20935538411140442,0.5754976868629456,edge,background or edge,True
+81,E27,42,EfficientNet-B0,100%,Strong,NORMAL,NORMAL/NORMAL2-IM-0229-0001.jpeg,margin,marker-text,,,shortcut place,False,False,0.0979713574051857,0.4418182671070099,edge,background or edge,True
+82,E18,42,ResNet18,100%,Strong,NORMAL,NORMAL/NORMAL2-IM-0229-0001.jpeg,margin,lung field,,,lung field,False,False,0.07200809568166733,0.12972024083137512,other,other,True
+83,E16,42,ResNet18,100%,None,NORMAL,NORMAL/NORMAL2-IM-0328-0001.jpeg,margin,lung field,,,lung field,False,False,0.05895412340760231,0.2381720393896103,other,other,True
+84,E16,42,ResNet18,100%,None,NORMAL,NORMAL/NORMAL2-IM-0092-0001.jpeg,margin,below the diaphragm,,,below the diaphragm,False,False,0.35354530811309814,0.5050941109657288,edge,edge,True
+85,E18,42,ResNet18,100%,Strong,NORMAL,NORMAL/NORMAL2-IM-0328-0001.jpeg,margin,mediastinum-heart,,,mediastinum-heart,False,False,0.0,0.0,other,other,True
+86,E09,42,MobileNetV3-Small,100%,Strong,NORMAL,NORMAL/IM-0091-0001.jpeg,margin,lung field,,,lung field,False,False,0.10080182552337646,0.08089805394411087,other,other,True
+87,E16,42,ResNet18,100%,None,NORMAL,NORMAL/NORMAL2-IM-0130-0001.jpeg,margin,image edge-background,,,shortcut place,False,False,0.6515353918075562,0.6434628963470459,background,background,True
+88,E27,42,EfficientNet-B0,100%,Strong,NORMAL,NORMAL/NORMAL2-IM-0130-0001.jpeg,margin,diffuse-other,,empty map,other,False,True,nan,nan,empty,,
+89,E16,42,ResNet18,100%,None,NORMAL,NORMAL/NORMAL2-IM-0229-0001.jpeg,margin,lung field,,,lung field,False,False,0.209007129073143,0.4220089912414551,other,other,True
+90,E25,42,EfficientNet-B0,100%,None,NORMAL,NORMAL/NORMAL2-IM-0328-0001.jpeg,margin,below the diaphragm,,,below the diaphragm,False,False,0.05268632620573044,0.643176257610321,edge,edge,True

@@ -204,6 +204,10 @@ the comparisons can be recomputed from the repo alone, without the checkpoints o
 * `stability_per_image.json` - per subset image: class, prediction and every perturbed pass's Pearson score.
 * `stability_maps.npy` - the raw 7x7 Grad-CAM maps, 468 images x 5 (clean + 4 perturbed).
 * `validation_metrics.json` and `history.json` - the run's validation pass and its per-epoch training history.
+* `shortcut.json` and `margin_maps.npy` - added later by `python -m src.shortcut --intervene --seed N` on Colab (the
+  shortcut check, NOTES.md #15): every validation and test image's two logits in four versions (unperturbed,
+  re-encoded as JPEG quality 75, blurred, sharpened) with the gate against `scores.json` (all 54 runs
+  `PASS-exact`), and the margin Grad-CAM maps of the 468 stability-subset images (468 x 7 x 7).
 
 ## Analysis
 
@@ -231,6 +235,34 @@ Written by `python -m src.analysis` from the files above:
   `analysis_operating_point_test.png` - the six figures.
 * `bootstrap_cache.npz` - every run scored on the 2,000 shared resamples; it saves about 20 minutes when the
   analysis runs again, and is rebuilt automatically if anything it depends on changes.
+
+## Shortcut check
+
+```text
+results/shortcut/
+```
+
+Written by `python -m src.shortcut` (NOTES.md #15) from the dataset and the per-run files above:
+
+* `summary.md` - the tables to read first: each image property and whether the models' margins follow it, where
+  the Grad-CAM maps sit, the intervention's readings, where the margin maps sit, each version's pixel change, and
+  the visual audit.
+* `covariates.csv` and `pixel_changes.csv` - per image and model-free: the encoding, size, shape, intensity,
+  contrast, dark fraction and grain; and how far each intervention version moves the pixels. Both are caches,
+  recomputed if missing or stale.
+* `availability.csv`, `correlations.csv`, `shift_correlations.csv` - each property as a lone classifier; its
+  correlation with the margin per run, class and split; and with the healthy test images' margin rise from 20% to
+  100% (NOTES.md #33).
+* `regions.csv`, `region_comparisons.csv`, `margin_regions.csv`, `margin_region_comparisons.csv` - where the
+  true-class and the margin maps put their mass, per run and class with intervals, and compared between regimes
+  and data sizes.
+* `intervention.csv` - per run, split, class and version, the median change of the margin and the prediction
+  flips.
+* `shortcut_availability.png`, `shortcut_regions_background.png`, `shortcut_regions_edge.png`,
+  `shortcut_margin_regions_edge.png`, `shortcut_intervention.png` - the five figures.
+* `audit/` - the visual audit: `README.md` (how to label), `sheet_1.png` to `sheet_8.png` (90 numbered overlays),
+  `labels_template.csv`, `labels.csv` (the labels), `key.csv` (which run, image and map each overlay is - not
+  opened while labelling) and `overlays.csv` (the labels joined to the runs, with each map's region values).
 
 ## Important
 

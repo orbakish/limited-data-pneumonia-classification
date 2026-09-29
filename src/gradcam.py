@@ -43,6 +43,11 @@ from src.train import get_device, load_best, run_directory
 
 # Class index -> name, the reverse of LABELS.
 CLASS_NAMES = {index: name for name, index in LABELS.items()}
+# The target that explains the margin, PNEUMONIA logit minus NORMAL logit, instead of one class.
+# Training with two logits fixes only their difference - adding the same vector to both output rows
+# changes no prediction but changes each class's map - so the margin's map is the one quantity a
+# two-logit head pins down (NOTES.md #15).
+MARGIN = "margin"
 # The randomisation test's pass mark, stated before any real map was computed (NOTES.md): a
 # faithful explanation of a trained model should share little rank order with one of a model
 # whose weights are random.
@@ -53,9 +58,10 @@ def gradcam(model, name, images, targets):
     """Return (maps, empty): each image's Grad-CAM map for its target class, and which are all zero.
 
     images is a preprocessed (N, 3, 224, 224) batch on the model's device, targets the class
-    index to explain for each image. maps is (N, 7, 7) float32 on the model's device, not
-    normalised - src/stability.py compares raw maps. empty is an (N,) bool tensor, True where the
-    ReLU left nothing, so every caller counts those the same way.
+    index to explain for each image - or MARGIN, to explain the PNEUMONIA logit minus the NORMAL
+    logit for every image. maps is (N, 7, 7) float32 on the model's device, not normalised -
+    src/stability.py compares raw maps. empty is an (N,) bool tensor, True where the ReLU left
+    nothing, so every caller counts those the same way.
 
     The class score y^c is the pre-softmax logit, as in the paper. The model is put in eval mode
     here: images in a batch must not affect each other (BatchNorm on running statistics, dropout
@@ -83,8 +89,13 @@ def gradcam(model, name, images, targets):
         with torch.enable_grad():
             logits = model(images)
             activations = captured["activations"]
-            # gather picks, from each row of logits, the column its target names: y^c per image.
-            chosen = logits.gather(1, targets.to(logits.device).long().view(-1, 1))
+            if isinstance(targets, str):
+                if targets != MARGIN:
+                    raise ValueError(f"unknown target {targets!r}; expected class indices or {MARGIN!r}")
+                chosen = logits[:, LABELS["PNEUMONIA"]] - logits[:, LABELS["NORMAL"]]
+            else:
+                # gather picks, from each row of logits, the column its target names: y^c per image.
+                chosen = logits.gather(1, targets.to(logits.device).long().view(-1, 1))
             # Images are independent in eval mode, so the gradient of the summed scores holds
             # each image's own gradient. autograd.grad returns it without writing .grad into any
             # parameter, and stops at the activations instead of running back to the input.
@@ -222,18 +233,27 @@ def closed_form_maps(model, name, images, targets):
     global average pooling and one linear layer (plus dropout, off in eval), so dy^c/dA_ij =
     w^c / 49 at every cell and Grad-CAM reduces to CAM: ReLU(sum_k w^c_k A^k) / 49 - the paper's
     "Grad-CAM generalises CAM" result. MobileNetV3-Small's head is Linear -> Hardswish ->
-    Dropout -> Linear, whose gradient is written out with Hardswish's derivative.
+    Dropout -> Linear, whose gradient is written out with Hardswish's derivative. For MARGIN, each
+    image's output-layer row is the PNEUMONIA row minus the NORMAL row.
     """
+    def rows(weight):
+        """Return the output-layer rows the targets select, one per image."""
+        if isinstance(targets, str):
+            difference = weight[LABELS["PNEUMONIA"]] - weight[LABELS["NORMAL"]]
+            # expand repeats the one row for every image without copying it.
+            return difference.expand(len(images), -1)
+        return weight[targets]
+
     with torch.no_grad():
         if name == "resnet18":
             x = model.maxpool(model.relu(model.bn1(model.conv1(images))))
             activations = model.layer4(model.layer3(model.layer2(model.layer1(x))))
-            gradient = model.fc.weight[targets]
+            gradient = rows(model.fc.weight)
         else:
             # For both other architectures the Grad-CAM layer is the last block of .features.
             activations = model.features(images)
             if name == "efficientnet_b0":
-                gradient = model.classifier[1].weight[targets]
+                gradient = rows(model.classifier[1].weight)
             else:
                 first, last = model.classifier[0], model.classifier[3]
                 z = activations.mean(dim=(2, 3)) @ first.weight.T + first.bias
@@ -241,7 +261,7 @@ def closed_form_maps(model, name, images, targets):
                 # (2z + 3) / 6 in between.
                 slope = torch.where(z < -3, torch.zeros_like(z),
                                     torch.where(z > 3, torch.ones_like(z), (2 * z + 3) / 6))
-                gradient = (last.weight[targets] * slope) @ first.weight
+                gradient = (rows(last.weight) * slope) @ first.weight
         cells = activations.shape[2] * activations.shape[3]
         # einsum "nk,nkhw->nhw": for each image, a weighted sum of its channel maps.
         return torch.relu(torch.einsum("nk,nkhw->nhw", gradient / cells, activations))
@@ -271,6 +291,12 @@ def check_architecture(name):
 
     other_class, _ = gradcam(model, name, images, 1 - targets)
     print(f"  the two classes' maps differ: {not torch.allclose(maps, other_class)}")
+
+    margin, _ = gradcam(model, name, images, MARGIN)
+    expected = closed_form_maps(model, name, images, MARGIN)
+    error = float((margin - expected).abs().max() / expected.abs().max().clamp_min(1e-12))
+    print(f"  the margin's maps equal the closed form with the difference of the output rows: {error < 1e-4} "
+          f"(relative difference {error:.1e})")
 
     # A partially fine-tuned model left in its training mode: gradcam must switch it to eval.
     set_fine_tuning(model, name, "partial")

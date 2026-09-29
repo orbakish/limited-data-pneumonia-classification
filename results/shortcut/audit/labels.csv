@@ -1,0 +1,91 @@
+number,label,second_label,note
+1,marker-text,,R letter
+2,mediastinum-heart,,
+3,marker-text,image edge-background,
+4,image edge-background,,out of the patient left ribs under his left arm
+5,image edge-background,,out of the patient ribs around his arms
+6,lung field,mediastinum-heart,all his rib cage
+7,device-wires,image edge-background,also on the R letter
+8,marker-text,,R letter
+9,diffuse-other,,neck
+10,diffuse-other,,neck
+11,lung field,,top of the lungs close to neck
+12,mediastinum-heart,below the diaphragm,
+13,lung field,diffuse-other,top of lungs and close to neck
+14,image edge-background,diffuse-other,neck and left of it
+15,device-wires,,wires next to left lung
+16,device-wires,lung field,"mostly wires, some of lungs"
+17,marker-text,,R letter
+18,marker-text,,R letter
+19,device-wires,,
+20,below the diaphragm,diffuse-other,neck and below lungs
+21,lung field,,
+22,lung field,,
+23,lung field,,
+24,lung field,diffuse-other,lungs and neck
+25,mediastinum-heart,marker-text,spine and R letter
+26,marker-text,below the diaphragm,
+27,lung field,mediastinum-heart,
+28,lung field,mediastinum-heart,
+29,lung field,device-wires,
+30,lung field,below the diaphragm,
+31,lung field,diffuse-other,also neck
+32,diffuse-other,,neck mostly
+33,mediastinum-heart,device-wires,
+34,marker-text,lung field,
+35,diffuse-other,below the diaphragm,neck and bottom edges of lungs
+36,lung field,,
+37,image edge-background,lung field,
+38,marker-text,,
+39,lung field,mediastinum-heart,
+40,lung field,,bottom of right lung
+41,marker-text,lung field,bottom of left lung
+42,device-wires,,
+43,marker-text,below the diaphragm,
+44,marker-text,,
+45,device-wires,below the diaphragm,
+46,lung field,,
+47,lung field,marker-text,"exactly between R letter to top of right lung, like the edge of the neck"
+48,diffuse-other,below the diaphragm,
+49,device-wires,below the diaphragm,
+50,diffuse-other,,spine above the middle of the two lungs
+51,diffuse-other,,neck
+52,lung field,below the diaphragm,left lung and below it
+53,marker-text,below the diaphragm,
+54,diffuse-other,lung field,neck and a little of left lung
+55,device-wires,lung field,
+56,diffuse-other,,neck
+57,lung field,,
+58,lung field,,
+59,lung field,,top of the lungs close to neck
+60,lung field,device-wires,
+61,image edge-background,,right hand and out of left lung
+62,mediastinum-heart,,
+63,diffuse-other,,empty map
+64,below the diaphragm,mediastinum-heart,
+65,mediastinum-heart,lung field,
+66,lung field,below the diaphragm,
+67,below the diaphragm,mediastinum-heart,
+68,image edge-background,,
+69,image edge-background,,
+70,image edge-background,,
+71,image edge-background,,
+72,mediastinum-heart,below the diaphragm,
+73,below the diaphragm,,
+74,lung field,,
+75,image edge-background,,
+76,diffuse-other,,empty map
+77,image edge-background,,
+78,image edge-background,below the diaphragm,
+79,lung field,below the diaphragm,
+80,marker-text,,
+81,marker-text,,
+82,lung field,,
+83,lung field,,
+84,below the diaphragm,,
+85,mediastinum-heart,,
+86,lung field,,
+87,image edge-background,,
+88,diffuse-other,,empty map
+89,lung field,,
+90,below the diaphragm,,
