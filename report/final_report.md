@@ -70,10 +70,6 @@ Strong augmentation produced the clearest and most consistent improvement in cla
 
 The benefit of augmentation was not limited to the smallest training set. Strong augmentation improved ROC-AUC at 20%, 50%, and 100% data for all three architectures, but the size of the improvement did not consistently increase or decrease with training-data size. Therefore, our results do not support the hypothesis that augmentation becomes more useful specifically when less training data is available.
 
-![Validation-test operating-point shift](../results/analysis/analysis_operating_point_shift.png)
-
-*Figure 2. Median logit margin of Normal images as training-data size increases. Validation and test show different operating-point behavior, consistent with the decrease in test specificity.*
-
 Increasing the amount of training data also produced an unexpected result. On the official test set, ROC-AUC did not improve consistently and specificity generally decreased as more training data was used. This effect remained when using the threshold selected on validation: specificity decreased in 17 of 18 comparisons for seed 42 and 13 of 18 for seed 43. In contrast, validation specificity improved with more data. This suggests an operating-point shift between the validation distribution and the official test set rather than a simple loss of ranking ability.
 
 The three architectures showed similar overall ROC-AUC, with no architecture consistently outperforming the others. Their main difference was in their response to augmentation. EfficientNet-B0 showed the largest average ROC-AUC improvement from augmentation, while ResNet18 showed the smallest. MobileNetV3-Small showed the most consistent improvement in explanation stability.
