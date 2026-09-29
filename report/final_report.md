@@ -62,11 +62,17 @@ Heatmap similarity is measured using Pearson correlation. Pearson was used inste
 
 ## 4. Results and Analysis
 
-The results are summarized over the two random seeds. We treat a finding as strong when the same direction is observed in both seeds, since the seed-to-seed variation was comparable to several of the measured effects.
-
 Strong augmentation produced the clearest and most consistent improvement in classification performance. Compared with no augmentation, ROC-AUC increased in all 9 architecture/data-size combinations in both seeds, with a median improvement of about 0.020. Mild augmentation also improved ROC-AUC in most configurations, but less consistently. The main threshold-dependent improvement was in specificity: strong augmentation reduced false positive predictions on Normal images, while recall remained almost unchanged because it was already very high across the experiments.
 
+![ROC-AUC improvement from augmentation](../results/analysis/analysis_regime_roc_auc.png)
+
+*Figure 1. Difference in test ROC-AUC between each augmentation regime and no augmentation, across architectures and training-data sizes for both random seeds.*
+
 The benefit of augmentation was not limited to the smallest training set. Strong augmentation improved ROC-AUC at 20%, 50%, and 100% data for all three architectures, but the size of the improvement did not consistently increase or decrease with training-data size. Therefore, our results do not support the hypothesis that augmentation becomes more useful specifically when less training data is available.
+
+![Validation-test operating-point shift](../results/analysis/analysis_operating_point_shift.png)
+
+*Figure 2. Median logit margin of Normal images as training-data size increases. Validation and test show different operating-point behavior, consistent with the decrease in test specificity.*
 
 Increasing the amount of training data also produced an unexpected result. On the official test set, ROC-AUC did not improve consistently and specificity generally decreased as more training data was used. This effect remained when using the threshold selected on validation: specificity decreased in 17 of 18 comparisons for seed 42 and 13 of 18 for seed 43. In contrast, validation specificity improved with more data. This suggests an operating-point shift between the validation distribution and the official test set rather than a simple loss of ranking ability.
 
@@ -88,7 +94,7 @@ The shortcut analysis also shows why classification metrics alone are not suffic
 
 There are several limitations. The experiments use a single dataset, and the training and test images contain differences in size, aspect ratio, framing, and medical devices that are unrelated to pneumonia. Patient grouping is derived from filenames and is therefore not guaranteed to represent true patient identity for every image. Only two training seeds were used, and the validation set reached near-ceiling performance, limiting its ability to distinguish between configurations. Parts of the shortcut analysis are correlational, and the visual audit used one non-blinded rater. Finally, the stability metric was changed from cosine similarity in the original proposal to Pearson correlation after implementation, because Pearson was less dominated by the common positive background of Grad-CAM maps.
 
-Overall, the results show that strong but clinically reasonable augmentation can improve pneumonia classification without reducing explanation stability. At the same time, the validation-to-test shift and the shortcut findings show that high classification performance alone does not guarantee that a model is relying on clinically meaningful evidence. Future work could evaluate the same protocol on additional datasets, use external validation, and test methods that explicitly reduce sensitivity to acquisition-related shortcuts.
+Overall, the results show that strong but clinically reasonable augmentation can improve pneumonia classification without reducing the measured explanation stability. At the same time, the validation-to-test shift and the shortcut findings show that high classification performance alone does not guarantee that a model is relying on clinically meaningful evidence. Future work could evaluate the same protocol on additional datasets, use external validation, and test methods that explicitly reduce sensitivity to acquisition-related shortcuts.
 
 ## Team Contributions
 
