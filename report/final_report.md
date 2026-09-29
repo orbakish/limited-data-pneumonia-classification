@@ -54,13 +54,41 @@ The complete 27-experiment sweep is repeated with two random seeds, 42 and 43, u
 
 Classification performance is evaluated using accuracy, precision, recall, specificity, F1-score, balanced accuracy, ROC-AUC, and confusion matrices. Confidence intervals are also reported for the main metrics. Threshold-dependent metrics are evaluated both at the standard threshold of 0.5 and at a threshold selected on the validation set to maximize balanced accuracy. The test set is not used for model selection or threshold tuning.
 
+For comparisons across experimental conditions, results are summarized over both random seeds. A finding is considered strong when both seeds show the same direction of effect. The 95% confidence intervals are based on 2,000 patient-group bootstrap resamples and represent test-sampling uncertainty for a fixed trained model.
+
 Grad-CAM is used to examine which image regions contribute to each model's prediction. Explanation stability is evaluated on a fixed class-balanced set of 468 test images, containing all 234 Normal images and 234 Pneumonia images. For each image, the original Grad-CAM heatmap is compared with heatmaps obtained after two small perturbations: a small rotation as the in-family perturbation and Gaussian noise with σ = 0.02 as the out-of-family perturbation.
 
 Heatmap similarity is measured using Pearson correlation. Pearson was used instead of the cosine similarity originally proposed because Grad-CAM maps are non-negative after ReLU, which can make cosine similarity high even when the main activation regions differ. Pearson correlation removes each map's mean before comparison and therefore provides better separation between meaningful spatial agreement and shared positive background. For rotated inputs, the heatmap is aligned back to the original orientation before the comparison.
 
 ## 4. Results and Analysis
 
+The results are summarized over the two random seeds. We treat a finding as strong when the same direction is observed in both seeds, since the seed-to-seed variation was comparable to several of the measured effects.
+
+Strong augmentation produced the clearest and most consistent improvement in classification performance. Compared with no augmentation, ROC-AUC increased in all 9 architecture/data-size combinations in both seeds, with a median improvement of about 0.020. Mild augmentation also improved ROC-AUC in most configurations, but less consistently. The main threshold-dependent improvement was in specificity: strong augmentation reduced false positive predictions on Normal images, while recall remained almost unchanged because it was already very high across the experiments.
+
+The benefit of augmentation was not limited to the smallest training set. Strong augmentation improved ROC-AUC at 20%, 50%, and 100% data for all three architectures, but the size of the improvement did not consistently increase or decrease with training-data size. Therefore, our results do not support the hypothesis that augmentation becomes more useful specifically when less training data is available.
+
+Increasing the amount of training data also produced an unexpected result. On the official test set, ROC-AUC did not improve consistently and specificity generally decreased as more training data was used. This effect remained when using the threshold selected on validation: specificity decreased in 17 of 18 comparisons for seed 42 and 13 of 18 for seed 43. In contrast, validation specificity improved with more data. This suggests an operating-point shift between the validation distribution and the official test set rather than a simple loss of ranking ability.
+
+The three architectures showed similar overall ROC-AUC, with no architecture consistently outperforming the others. Their main difference was in their response to augmentation. EfficientNet-B0 showed the largest average ROC-AUC improvement from augmentation, while ResNet18 showed the smallest. MobileNetV3-Small showed the most consistent improvement in explanation stability.
+
+For Grad-CAM stability, strong augmentation increased the in-family minus out-of-family stability gap in 5 of 9 configurations in both seeds and decreased it in none. The increase was mainly caused by higher stability under rotation, with little consistent change under Gaussian noise. This indicates that augmentation mainly teaches invariance to transformations similar to those seen during training, rather than improving explanation stability in general. The same direction remained when only correctly classified images were considered and when empty Grad-CAM maps were counted as zero.
+
+The shortcut analysis showed that several non-pathological image properties may influence the models. Although JPEG encoding strongly differed between the training classes, re-encoding the validation images did not reproduce the validation-to-test performance shift, so this shortcut was not supported by the intervention. In healthy test images, smaller original image size was correlated with predictions moving toward Pneumonia, although this result is correlational. Grad-CAM analysis also showed that pneumonia evidence was often concentrated near the upper corners and bottom of the image. Augmentation reduced this concentration consistently, suggesting that it can reduce some reliance on non-clinical image regions.
+
 ## 5. Discussion and Conclusion
+
+The main result of this project is that stronger, clinically constrained augmentation improved pneumonia classification consistently across architectures and training-data sizes. However, the improvement was not stronger in the limited-data setting than with the full training set. This means that augmentation was useful throughout the experiment, but our results do not show that its value is specifically caused by data scarcity.
+
+The explanation-stability results also did not show the expected trade-off between stronger augmentation and less stable explanations. Instead, augmentation increased stability mainly for rotations similar to those used during training, while out-of-family stability remained approximately unchanged. This distinction is important because a higher stability score does not necessarily mean that the model has learned generally more reliable explanations; it may reflect invariance to a specific trained transformation.
+
+A second important finding is the difference between validation and test behavior. More training data improved validation performance but caused more healthy test images to be classified as Pneumonia. Validation-based threshold tuning did not consistently correct this effect. Together with the shortcut analysis, this suggests that dataset-specific acquisition and framing differences can affect the operating point of the models even when their ROC-AUC remains high.
+
+The shortcut analysis also shows why classification metrics alone are not sufficient. The models did not appear to rely on the JPEG-quality difference, but image size and non-lung image regions were associated with some predictions. Augmentation reduced part of this behavior, although it did not remove it completely.
+
+There are several limitations. The experiments use a single dataset, and the training and test images contain differences in size, aspect ratio, framing, and medical devices that are unrelated to pneumonia. Patient grouping is derived from filenames and is therefore not guaranteed to represent true patient identity for every image. Only two training seeds were used, and the validation set reached near-ceiling performance, limiting its ability to distinguish between configurations. Parts of the shortcut analysis are correlational, and the visual audit used one non-blinded rater. Finally, the stability metric was changed from cosine similarity in the original proposal to Pearson correlation after implementation, because Pearson was less dominated by the common positive background of Grad-CAM maps.
+
+Overall, the results show that strong but clinically reasonable augmentation can improve pneumonia classification without reducing explanation stability. At the same time, the validation-to-test shift and the shortcut findings show that high classification performance alone does not guarantee that a model is relying on clinically meaningful evidence. Future work could evaluate the same protocol on additional datasets, use external validation, and test methods that explicitly reduce sensitivity to acquisition-related shortcuts.
 
 ## Team Contributions
 
@@ -85,3 +113,8 @@ Individual experiments can be run using `run_experiment.py`, while `run_all.py` 
 GitHub: https://github.com/orbakish/limited-data-pneumonia-classification
 
 ## References
+
+[1] D. S. Kermany et al., “Identifying Medical Diagnoses and Treatable Diseases by Image-Based Deep Learning,” Cell, vol. 172, no. 5, pp. 1122–1131, 2018. doi: 10.1016/j.cell.2018.02.010.
+
+[2] R. R. Selvaraju et al., “Grad-CAM: Visual Explanations from Deep Networks via Gradient-based Localization,” Proceedings of the IEEE International Conference on Computer Vision (ICCV), 2017. doi: 10.1109/ICCV.2017.74.
+
