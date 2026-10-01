@@ -1,9 +1,10 @@
 # What the project shows so far
 
-*Current as of 2026-09-28, branch `yotam/shortcut-check`.* The bottom lines of the work to date, for Or and
+*Current as of 2026-09-30, branch `yotam/close-questions`.* The bottom lines of the work to date, for Or and
 Yotam, and a starting point for the report. Nothing here is new: every number comes from
 `results/analysis/summary.md`, `results/analysis/runs.csv`, `results/shortcut/summary.md` or a row of `NOTES.md`,
-named beside it so it can be checked. Readings that still wait for Or's agreement are marked **(to confirm)**.
+named beside it so it can be checked. Or confirmed the readings of #33-#36 on 2026-09-29; each question number
+points to the Decisions row in `NOTES.md` that closes it.
 
 **How to read the numbers.** Every result compares two trained models on the same 624 test images. A *cell* is
 one architecture at one data size or in one augmentation regime. *Consistent* means both seeds point the same
@@ -15,17 +16,17 @@ noise, often as large as the effects (section 6).
 
 1. Augmentation - strong augmentation above all - improves the models in every cell of both seeds, at every data
    size, and the clearest gain is fewer false alarms. Its ranking gain does not grow when data is scarcer
-   **(to confirm, #35)**.
+   (#35).
 2. It does not harm explanation stability. It makes explanations more stable under the rotation it trained on,
    and leaves stability under noise where it was.
 3. More training data did not help on the official test set: the models called more healthy images pneumonia.
-   The cut-off set on our validation set does not carry over to the test set **(to confirm, #33)**.
+   The cut-off set on our validation set does not carry over to the test set (#33).
 4. The three architectures rank test images about equally well and respond alike to more data; they differ in
-   how much augmentation helps them **(to confirm, #34)**.
+   how much augmentation helps them (#34).
 5. The models do not follow the JPEG encoding that separates the classes in training. But healthy images move
    towards pneumonia under blur, sharpening and added noise, the healthy test images' margins follow their
    original size, and the pneumonia evidence of two of the three architectures leans to the image's corners and
-   bottom row - less so with augmentation **(to confirm, #36)**.
+   bottom row - less so with augmentation (#36).
 
 ## 1. Does augmentation improve performance under limited data?
 
@@ -38,7 +39,7 @@ alarms.**
 - Specificity at 0.5 is where it shows: strong vs none +0.088, 9 of 9 in both seeds, strict in 5. Recall hardly
   moves (+0.001), because it is already 0.97-0.997 in every run.
 - EfficientNet-B0 gains the most (+0.029 mild, +0.032 strong), ResNet18 the least (#34).
-- **When - more at 20% than at 100%? (to confirm, #35)** Not more when data is scarce. Strong augmentation raises
+- **When - more at 20% than at 100%? (#35)** Not more when data is scarce. Strong augmentation raises
   ROC-AUC at every size - in 3 of 3 architectures in both seeds at 20%, 50% and 100% - and the gain does not
   consistently grow or shrink with more data: only 1 of the 12 paired comparisons (effect at the larger size minus
   at 20%) is strict, EfficientNet-B0 strong at 100% (+0.023), where the strongly augmented run itself kept
@@ -62,9 +63,10 @@ noise.**
   empty maps, nor the chance baseline produce it.
 - By architecture: MobileNetV3-Small shows it cleanly (strict in every cell, +0.087 mild, +0.089 strong),
   ResNet18 hardly at all (-0.020 / +0.001), and for EfficientNet-B0 it depends on the seed (#34).
-- **Caveat:** the perturbation sizes are provisional, to be reviewed together (#29).
+- The perturbation sizes - rotation +/-5 degrees, noise sigma 0.02 - are the ones fixed before the sweeps, kept
+  after the results as the main measure (#29).
 
-## 3. Do lightweight and larger models behave differently? (to confirm, #34)
+## 3. Do lightweight and larger models behave differently? (#34)
 
 **Not in how well they rank test images, and not in their response to more data - but in their response to
 augmentation.**
@@ -78,7 +80,7 @@ augmentation.**
 - Augmentation: EfficientNet-B0 gains the most ranking and ResNet18 the least; the lightweight
   MobileNetV3-Small is the only model whose stability gap grows with augmentation in every cell of both seeds.
 
-## 4. More training data did not help on the official test set (to confirm, #33)
+## 4. More training data did not help on the official test set (#33)
 
 **From 20% to 100% of the training data, test ROC-AUC has no consistent direction and specificity falls - at
 0.5 and at the tuned threshold alike - while every validation measure improves.**
@@ -99,12 +101,12 @@ augmentation.**
   EfficientNet-B0's healthy test images move about +2.2 towards the cut-off, the strongly augmented
   EfficientNet-B0's -0.09; the specificity comparisons that are strict are all at 100%, where the unaugmented runs
   change by -0.07 to -0.16 and the augmented ones by -0.05 to +0.02.
-- **Reading (to confirm):** an operating-point shift between the training distribution, which our validation
+- **Reading:** an operating-point shift between the training distribution, which our validation
   set samples, and the official test set, growing with more data. It ties to #15; the JPEG encoding does not
   explain it (section 5). Figure:
   `results/analysis/analysis_operating_point_shift.png`.
 
-## 5. Do the models take shortcuts? (to confirm, #36)
+## 5. Do the models take shortcuts? (#36)
 
 **Not the JPEG encoding. But healthy images read as more like pneumonia after blur, sharpening or added noise,
 the healthy test images' margins follow their size, and the evidence for pneumonia leans to the image's corners and
@@ -182,14 +184,15 @@ bottom row - less so with augmentation.**
 - The shortcut check is partly correlational: the size finding holds on test only and size was never changed in
   a test; the encoding test copies the quality table only; the visual audit is one rater, not blind, on 6 runs of
   one seed (section 5).
-- The stability perturbations are provisional (#29), and the metric changed from the proposal's cosine
-  similarity to Pearson correlation - the report has to say so and why (#30).
+- Stability is measured with one perturbation per family - a small rotation in-family, faint noise
+  out-of-family - fixed before the sweeps and kept (#29); blur as a second out-of-family perturbation is future
+  work. The metric changed from the proposal's cosine similarity to Pearson correlation - the report has to say so
+  and why (#30).
 - Class weighting and the validation-chosen threshold correct the training imbalance, not the test set's
   operating point (#17, #27).
 
 ## 8. Still open
 
-- #33, #34, #35 and #36 - Or to confirm the readings above.
-- #29 - the perturbation sizes, reviewed together.
 - `experiments/experiment_log.md` - the results rows (Or).
+- #5 - whether `README.md` links the block diagram (Or).
 - The report states the change from cosine to Pearson (#30).
