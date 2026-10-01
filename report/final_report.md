@@ -58,7 +58,7 @@ For comparisons across experimental conditions, results are summarized over both
 
 Grad-CAM is used to examine which image regions contribute to each model's prediction. Explanation stability is evaluated on a fixed class-balanced set of 468 test images, containing all 234 Normal images and 234 Pneumonia images. For each image, the original Grad-CAM heatmap is compared with heatmaps obtained after two small perturbations: rotations of ±5° as the in-family perturbation and Gaussian noise with σ = 0.02 (on the 0–1 pixel scale) as the out-of-family perturbation.
 
-Heatmap similarity is measured using Pearson correlation, with the stability gap defined as in-family minus out-of-family correlation. Pearson was used instead of the cosine similarity originally proposed because Grad-CAM maps are non-negative after ReLU, which can make cosine similarity high even when the main activation regions differ. Pearson was chosen over cosine similarity because mean-centering reduces the effect of Grad-CAM’s shared positive background. For rotated inputs, the heatmap is aligned back to the original orientation before the comparison.
+Heatmap similarity is measured using Pearson correlation, with the stability gap defined as in-family minus out-of-family correlation. Pearson was chosen over the originally proposed cosine similarity because mean-centering reduces the effect of Grad-CAM’s shared positive background. For rotated inputs, the heatmap is aligned back to the original orientation before the comparison.
 
 ## 4. Results and Analysis
 
